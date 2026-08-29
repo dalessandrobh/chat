@@ -22,6 +22,10 @@ services:
       - .env
     networks:
       - coolify
+      # Rede do serviço Evolution, criada pelo Coolify. Painel e Evolution
+      # conversam por dentro do Docker: o webhook e a API key nunca saem do
+      # host, e não dependemos de DNS público nem de certificado.
+      - evolution
     labels:
       traefik.enable: "true"
       traefik.docker.network: coolify
@@ -45,3 +49,6 @@ services:
 networks:
   coolify:
     external: true
+  evolution:
+    external: true
+    name: ykziys9tymo2olnltm6bgpib

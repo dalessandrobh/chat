@@ -93,11 +93,15 @@ async function handleInboundMessage(event: EvoInboundMessage) {
     );
   }
 
-  // 3. Contato + conversa
+  // 3. Contato + conversa.
+  //
+  //    Em mensagem `fromMe` o pushName é o nome do DONO, não o do cliente —
+  //    gravá-lo renomearia o contato para "Você". Por isso o nome só vem
+  //    junto quando quem falou foi o cliente.
   const { data: conversationId, error: resolveError } = await db.rpc("resolve_conversation", {
     p_channel_id: channel.id,
     p_wa_id: event.from,
-    p_profile_name: event.profileName,
+    p_profile_name: event.fromMe ? null : event.profileName,
   });
   if (resolveError) throw resolveError;
 
@@ -139,6 +143,10 @@ async function handleInboundMessage(event: EvoInboundMessage) {
       p_conversation_id: conversationId,
       p_reason: "Resposta manual pelo WhatsApp",
     });
+
+    // Se ele já respondeu, já leu. Sem isso a conversa ficaria marcada como
+    // não lida no painel até alguém abrir uma mensagem que não existe mais.
+    await db.from("conversations").update({ unread_count: 0 }).eq("id", conversationId);
     return;
   }
 

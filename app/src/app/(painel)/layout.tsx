@@ -50,6 +50,9 @@ export default async function PainelLayout({
           <Link href="/templates" className="hover:underline">
             Templates
           </Link>
+          <Link href="/canais" className="hover:underline">
+            Canais
+          </Link>
         </nav>
 
         <span className="ml-auto text-xs" style={{ color: "var(--muted)" }}>
