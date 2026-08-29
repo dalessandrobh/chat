@@ -1,0 +1,119 @@
+# =============================================================================
+# n8n — motor de automação do projeto Chat
+# =============================================================================
+# Sobe na rede `coolify`, então o Traefik do Coolify roteia e emite o SSL
+# automaticamente pelas labels abaixo — mesmo padrão dos demais apps da VPS.
+#
+# Postgres dedicado de propósito: mantém o n8n independente do ciclo de vida
+# da stack do Supabase; um redeploy do Supabase não derruba as automações.
+#
+# Subir:   docker compose up -d
+# Logs:    docker compose logs -f n8n
+# Parar:   docker compose down        (sem -v, para preservar os dados)
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:1.72.1
+    container_name: chat-n8n
+    restart: unless-stopped
+    environment:
+      # --- Banco ---
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: n8n-db
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB}
+      DB_POSTGRESDB_USER: ${POSTGRES_USER}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # --- URLs públicas ---
+      # Sem isto os webhooks são registrados com localhost e a Meta não alcança.
+      N8N_HOST: ${N8N_HOSTNAME}
+      N8N_PROTOCOL: https
+      N8N_PORT: 5678
+      WEBHOOK_URL: https://${N8N_HOSTNAME}
+      N8N_EDITOR_BASE_URL: https://${N8N_HOSTNAME}
+      N8N_PROXY_HOPS: 1
+
+      # --- Segurança ---
+      # Criptografa as credenciais salvas nos workflows.
+      # PERDER ESTA CHAVE = perder todas as credenciais. Guarde num cofre.
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_SECURE_COOKIE: "true"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"
+
+      # --- Comportamento ---
+      GENERIC_TIMEZONE: America/Sao_Paulo
+      TZ: America/Sao_Paulo
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      # Poda execuções antigas: sem isso o banco cresce sem limite.
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "336"          # 14 dias, em horas
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+
+      # --- Ponte com o painel Chat ---
+      # O n8n nunca fala direto com a Meta: chama a API do painel, que
+      # centraliza envio, log e a regra da janela de 24h.
+      CHAT_API_URL: ${CHAT_API_URL}
+      CHAT_SERVICE_TOKEN: ${CHAT_SERVICE_TOKEN}
+    volumes:
+      - n8n-data:/home/node/.n8n
+    depends_on:
+      n8n-db:
+        condition: service_healthy
+    networks:
+      - coolify
+      - n8n-internal
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: coolify
+      # HTTP -> redireciona para HTTPS
+      traefik.http.routers.chat-n8n-http.entryPoints: http
+      traefik.http.routers.chat-n8n-http.rule: Host(`n8n.dsearch.com.br`)
+      traefik.http.routers.chat-n8n-http.middlewares: redirect-to-https
+      # HTTPS com certificado Let's Encrypt
+      traefik.http.routers.chat-n8n-https.entryPoints: https
+      traefik.http.routers.chat-n8n-https.rule: Host(`n8n.dsearch.com.br`)
+      traefik.http.routers.chat-n8n-https.tls: "true"
+      traefik.http.routers.chat-n8n-https.tls.certresolver: letsencrypt
+      traefik.http.routers.chat-n8n-https.middlewares: gzip
+      traefik.http.routers.chat-n8n-https.service: chat-n8n
+      traefik.http.services.chat-n8n.loadbalancer.server.port: "5678"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  n8n-db:
+    image: postgres:16-alpine
+    container_name: chat-n8n-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - n8n-db-data:/var/lib/postgresql/data
+    # Sem porta publicada: só o n8n alcança, pela rede interna.
+    networks:
+      - n8n-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  n8n-data:
+  n8n-db-data:
+
+networks:
+  coolify:
+    external: true
+  n8n-internal:
+    driver: bridge

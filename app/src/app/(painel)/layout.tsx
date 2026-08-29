@@ -1,0 +1,63 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { supabaseServer } from "@/lib/supabase/server";
+
+export default async function PainelLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const supabase = await supabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect("/login");
+
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("full_name, email, role, is_active")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  // Conta criada mas ainda não liberada por um admin.
+  if (!agent?.is_active) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <div className="max-w-md text-center">
+          <h1 className="text-xl font-semibold">Acesso pendente</h1>
+          <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
+            Sua conta ({user.email}) ainda não foi ativada. Peça a um
+            administrador para liberar em <code>chat.agents</code>.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <div className="flex h-screen flex-col">
+      <header
+        className="flex shrink-0 items-center gap-6 border-b px-5 py-3"
+        style={{ borderColor: "var(--border)", background: "var(--panel)" }}
+      >
+        <span className="text-sm font-semibold">Chat</span>
+
+        <nav className="flex gap-4 text-sm">
+          <Link href="/inbox" className="hover:underline">
+            Conversas
+          </Link>
+          <Link href="/templates" className="hover:underline">
+            Templates
+          </Link>
+        </nav>
+
+        <span className="ml-auto text-xs" style={{ color: "var(--muted)" }}>
+          {agent.full_name ?? agent.email} · {agent.role}
+        </span>
+      </header>
+
+      <main className="min-h-0 flex-1">{children}</main>
+    </div>
+  );
+}

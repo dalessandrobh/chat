@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f7f8fa;
+  --panel: #ffffff;
+  --border: #e4e7ec;
+  --text: #101828;
+  --muted: #667085;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1419;
+    --panel: #171d24;
+    --border: #262f3a;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+  }
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Fundo discreto do painel de mensagens, no espírito do WhatsApp */
+.thread-bg {
+  background-color: var(--bg);
+  background-image: radial-gradient(circle at 1px 1px, rgba(128, 128, 128, 0.12) 1px, transparent 0);
+  background-size: 22px 22px;
+}

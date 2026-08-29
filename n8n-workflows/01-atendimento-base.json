@@ -1,0 +1,215 @@
+{
+  "name": "Chat — Atendimento base",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chat-inbound",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "id": "webhook-inbound",
+      "name": "Mensagem recebida",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        300
+      ],
+      "webhookId": "chat-inbound",
+      "notes": "O painel Chat chama este webhook quando chega mensagem E a conversa está em modo bot. Configure a credencial Header Auth com Name=Authorization e Value=Bearer <CHAT_SERVICE_TOKEN>."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normaliza o payload e detecta pedido de atendimento humano.\nconst body = $input.first().json.body ?? $input.first().json;\nconst texto = (body.text ?? '').toLowerCase().trim();\n\n// Gatilhos de escalonamento. Ajuste à vontade.\nconst GATILHOS = ['atendente', 'humano', 'pessoa', 'falar com alguem', 'falar com alguém', 'suporte'];\nconst querHumano = GATILHOS.some((g) => texto.includes(g));\n\nreturn [{\n  json: {\n    conversationId: body.conversationId,\n    from: body.from,\n    nome: body.profileName ?? 'cliente',\n    texto: body.text ?? '',\n    tipo: body.type,\n    querHumano,\n  },\n}];"
+      },
+      "id": "normalizar",
+      "name": "Normalizar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "quer-humano",
+              "leftValue": "={{ $json.querHumano }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-humano",
+      "name": "Pediu atendente?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -20,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CHAT_API_URL }}/api/internal/escalate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.CHAT_SERVICE_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ conversationId: $json.conversationId, reason: 'Cliente pediu atendimento humano' }) }}",
+        "options": {}
+      },
+      "id": "escalar",
+      "name": "Escalar para humano",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        180
+      ],
+      "notes": "Marca a conversa como pendente de humano. A partir daqui o bot fica mudo até alguém devolver no painel."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CHAT_API_URL }}/api/internal/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.CHAT_SERVICE_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'text', conversationId: $json.conversationId, text: 'Certo! Já estou chamando um atendente. Um instante, por favor.' }) }}",
+        "options": {}
+      },
+      "id": "avisar-espera",
+      "name": "Avisar que vai chamar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        180
+      ],
+      "notes": "Sai ANTES do escalonamento de propósito: enquanto a conversa ainda está em modo bot, o envio é permitido. Depois do escalate, a API passa a recusar com 409."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CHAT_API_URL }}/api/internal/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.CHAT_SERVICE_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'text', conversationId: $json.conversationId, text: 'Olá, ' + $json.nome + '! Recebi sua mensagem: \"' + $json.texto + '\". Em que posso ajudar?' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "responder",
+      "name": "Responder (bot)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        420
+      ],
+      "notes": "neverError ligado: se um humano assumir a conversa no meio do fluxo, a API devolve 409 e o workflow deve encerrar em silêncio, não falhar."
+    }
+  ],
+  "connections": {
+    "Mensagem recebida": {
+      "main": [
+        [
+          {
+            "node": "Normalizar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar": {
+      "main": [
+        [
+          {
+            "node": "Pediu atendente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pediu atendente?": {
+      "main": [
+        [
+          {
+            "node": "Avisar que vai chamar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder (bot)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Avisar que vai chamar": {
+      "main": [
+        [
+          {
+            "node": "Escalar para humano",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
