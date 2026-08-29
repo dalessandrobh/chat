@@ -73,17 +73,23 @@ chat.dsearch.com.br  →  145.223.95.127
 > não só em runtime — o Next embute esses valores no bundle do browser
 > durante o build.
 
-### 3. Criar o primeiro usuário
+### 3. Usuários e acesso
 
-O painel usa o Supabase Auth. Crie o usuário pelo Studio
-(`supabase.dsearch.com.br` > Authentication > Add user), e depois promova
-a admin:
+O painel usa o Supabase Auth — **o mesmo do projeto dsearch**, já que a
+instância é compartilhada. Quem já tem login no dsearch entra no Chat com
+a mesma senha.
+
+Por isso, agente novo nasce **inativo** (`chat.agents.is_active = false`).
+Sem isso, qualquer cadastro no dsearch viraria um atendente com acesso às
+conversas. Para liberar alguém:
 
 ```sql
-update chat.agents set role = 'owner' where email = 'seu@email.com';
+update chat.agents set is_active = true, role = 'agent'
+ where email = 'pessoa@exemplo.com';
 ```
 
-O perfil em `chat.agents` é criado sozinho por trigger no signup.
+Papéis: `owner` e `admin` podem criar templates; `agent` só atende;
+`viewer` só lê. Quem entra sem estar ativo vê a tela "Acesso pendente".
 
 ## Rodar local
 

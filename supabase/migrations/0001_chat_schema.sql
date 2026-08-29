@@ -73,7 +73,10 @@ create table if not exists chat.agents (
   email        text,
   avatar_url   text,
   role         chat.agent_role not null default 'agent',
-  is_active    boolean not null default true,
+  -- Nasce INATIVO de propósito. Este Supabase é compartilhado com outros
+  -- projetos: sem isso, qualquer cadastro novo em outro app viraria um
+  -- agente com acesso ao painel do Chat.
+  is_active    boolean not null default false,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now()
 );

@@ -1,15 +1,16 @@
-import { Suspense } from "react";
 import { LoginForm } from "@/components/auth/LoginForm";
 
 /**
- * useSearchParams() força renderização no cliente, então o formulário fica
- * num componente próprio dentro de um Suspense — sem isso o Next não
- * consegue pré-renderizar esta rota no build.
+ * O destino pós-login vem do servidor como prop. Ler searchParams aqui, em
+ * vez de useSearchParams() no cliente, deixa o formulário ser renderizado
+ * no servidor — senão a página chega em branco e só aparece quando o JS
+ * termina de carregar.
  */
-export default function LoginPage() {
-  return (
-    <Suspense fallback={<main className="min-h-screen" />}>
-      <LoginForm />
-    </Suspense>
-  );
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const { next } = await searchParams;
+  return <LoginForm next={next ?? "/inbox"} />;
 }

@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
-export function LoginForm() {
+export function LoginForm({ next }: { next: string }) {
   const router = useRouter();
-  const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +32,7 @@ export function LoginForm() {
     }
 
     // refresh() força o middleware a rodar de novo com o cookie novo.
-    router.replace(params.get("next") ?? "/inbox");
+    router.replace(next);
     router.refresh();
   }
 

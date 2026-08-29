@@ -1,0 +1,47 @@
+# =============================================================================
+# Painel Chat — imagem de produção atrás do Traefik do Coolify
+# =============================================================================
+# Subir:      docker compose up -d --build
+# Rebuild:    docker compose build --no-cache && docker compose up -d
+# Logs:       docker compose logs -f chat-app
+
+services:
+  chat-app:
+    build:
+      context: ../../app
+      dockerfile: Dockerfile
+      args:
+        # O Next embute NEXT_PUBLIC_* no bundle do browser em tempo de BUILD.
+        # Definir só em runtime não funciona — o valor sai vazio no cliente.
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    image: chat-painel:local
+    container_name: chat-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - coolify
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: coolify
+      traefik.http.routers.chat-app-http.entryPoints: http
+      traefik.http.routers.chat-app-http.rule: Host(`chat.dsearch.com.br`)
+      traefik.http.routers.chat-app-http.middlewares: redirect-to-https
+      traefik.http.routers.chat-app-https.entryPoints: https
+      traefik.http.routers.chat-app-https.rule: Host(`chat.dsearch.com.br`)
+      traefik.http.routers.chat-app-https.tls: "true"
+      traefik.http.routers.chat-app-https.tls.certresolver: letsencrypt
+      traefik.http.routers.chat-app-https.middlewares: gzip
+      traefik.http.routers.chat-app-https.service: chat-app
+      traefik.http.services.chat-app.loadbalancer.server.port: "3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+networks:
+  coolify:
+    external: true
