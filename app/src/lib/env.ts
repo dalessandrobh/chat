@@ -8,6 +8,8 @@
  * realmente tenta usar aquele provedor, e aí a mensagem já diz qual é.
  */
 
+import "server-only";
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -90,8 +92,4 @@ export const serverEnv = {
   n8nWebhookUrl: optional("N8N_WEBHOOK_URL"),
 } as const;
 
-/** Config exposta ao browser. Só o que pode ser público. */
-export const publicEnv = {
-  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-} as const;
+// publicEnv vive em @/lib/env.public — ver o comentário de lá.

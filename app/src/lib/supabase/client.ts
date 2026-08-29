@@ -3,7 +3,7 @@
 /** Cliente Supabase do browser — usado pelo Realtime do inbox. */
 
 import { createBrowserClient } from "@supabase/ssr";
-import { publicEnv } from "@/lib/env";
+import { publicEnv } from "@/lib/env.public";
 
 let cached: ReturnType<typeof createBrowserClient> | null = null;
 
