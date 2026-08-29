@@ -137,14 +137,43 @@ notify pgrst, 'reload config';
 
 Se um dia a API responder `Invalid schema: chat`, é isso que se perdeu.
 
-### Memória
+### Memória e swap
 
-A VPS tem 7.8 GB e opera perto de 4 GB livres com tudo no ar. n8n + Postgres
-consomem ~500 MB. Se ficar apertado ao subir o painel, considere adicionar
-swap:
+A VPS tem 7.8 GB. Com tudo no ar sobram ~2.8 GB, e a maior fatia é a stack do
+Supabase (~1.9 GB em 14 containers), seguida de Neo4j (~800 MB) e n8n
+(~170 MB). O painel em si custa ~56 MB.
+
+Swap de 2 GB está ativo e persistido:
 
 ```bash
 fallocate -l 2G /swapfile && chmod 600 /swapfile
 mkswap /swapfile && swapon /swapfile
 echo '/swapfile none swap sw 0 0' >> /etc/fstab
 ```
+
+`vm.swappiness = 10` fica em `/etc/sysctl.d/99-swap-chat.conf`. O padrão do
+kernel é 60, que mandaria páginas quentes do Postgres para o disco sem
+necessidade — o sintoma seria query lenta sem causa aparente. Aqui o swap é
+rede de segurança contra OOM, não memória de trabalho.
+
+Conferir depois de um reboot:
+
+```bash
+swapon --show && cat /proc/sys/vm/swappiness
+```
+
+### Por que Chat e dsearch dividem o mesmo Supabase
+
+Não é economia de preguiça, é de memória: uma segunda stack custaria outros
+~1.9 GB e deixaria a VPS sem folga. Um segundo *database* no mesmo Postgres
+não resolveria — Auth, PostgREST e Realtime estão amarrados a um único banco,
+e o painel depende dos três.
+
+O isolamento vem dos schemas (`chat` e `dsearch`, cada um com sua RLS) e do
+`is_active = false` por padrão em `chat.agents`, que impede um cadastro do
+dsearch de virar agente aqui. O que continua compartilhado é `auth.users`.
+
+Se um dia isso pesar — um segundo operador no painel, ou dados de cliente que
+não devam conviver com os do dsearch — o caminho é um projeto no Supabase
+Cloud só para o Chat, não uma segunda stack local. O schema `chat` é
+autocontido: as migrations rodam iguais e só as chaves do `.env` mudam.
