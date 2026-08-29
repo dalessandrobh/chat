@@ -1,11 +1,15 @@
 /**
  * Serviço de envio de mensagens.
  *
- * Único caminho de saída do sistema. Painel e n8n chamam daqui, nunca a
- * Graph API direto. Concentrar aqui garante três coisas:
+ * Único caminho de saída do sistema. Painel e n8n chamam daqui, nunca a API
+ * do provedor direto. Concentrar aqui garante quatro coisas:
  *   1. toda mensagem enviada vira uma linha em chat.messages;
  *   2. a regra da janela de 24h é aplicada sempre, não por engano;
- *   3. falha da Meta fica registrada em vez de sumir.
+ *   3. falha do provedor fica registrada em vez de sumir;
+ *   4. quem chama não precisa saber se o canal é Meta ou Evolution.
+ *
+ * O provedor é escolhido pelo canal da conversa, não por configuração global:
+ * dois números de provedores diferentes convivem no mesmo painel.
  */
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -17,34 +21,129 @@ import {
   sendText,
   type MediaKind,
 } from "@/lib/meta/client";
+import {
+  EvolutionApiError,
+  sendMedia as evoSendMedia,
+  sendText as evoSendText,
+  type EvolutionMediaType,
+} from "@/lib/evolution/client";
 
 export type SendOutcome =
   | { ok: true; messageId: string; waMessageId: string }
   | { ok: false; reason: "outside_window"; message: string }
   | { ok: false; reason: "not_found"; message: string }
   | { ok: false; reason: "template_not_approved"; message: string }
+  | { ok: false; reason: "disconnected"; message: string }
   | { ok: false; reason: "meta_error"; message: string; code?: number };
+
+type Provider = "meta_cloud" | "evolution";
 
 interface ConversationRow {
   id: string;
   channel_id: string;
   window_expires_at: string | null;
   contacts: { wa_id: string } | null;
+  channels: { provider: Provider; instance_name: string | null } | null;
 }
 
 async function loadConversation(conversationId: string): Promise<ConversationRow | null> {
   const { data } = await supabaseAdmin()
     .from("conversations")
-    .select("id, channel_id, window_expires_at, contacts(wa_id)")
+    .select(
+      "id, channel_id, window_expires_at, contacts(wa_id), channels(provider, instance_name)"
+    )
     .eq("id", conversationId)
     .maybeSingle();
 
   return (data as ConversationRow | null) ?? null;
 }
 
+function providerOf(conversation: ConversationRow): Provider {
+  return conversation.channels?.provider ?? "meta_cloud";
+}
+
+/**
+ * Nome da instância na Evolution. A constraint channels_identity_check já
+ * impede canal evolution sem instância; se chegou aqui nulo, o canal foi
+ * criado por fora do painel.
+ */
+function instanceOf(conversation: ConversationRow): string {
+  const instance = conversation.channels?.instance_name;
+  if (!instance) {
+    throw new Error(
+      `Canal ${conversation.channel_id} é evolution mas não tem instance_name.`
+    );
+  }
+  return instance;
+}
+
+/**
+ * A janela de 24h é regra da Meta, não do WhatsApp: em canal evolution não
+ * existe restrição de horário para texto livre.
+ */
 function isWithinWindow(conversation: ConversationRow): boolean {
+  if (providerOf(conversation) === "evolution") return true;
   if (!conversation.window_expires_at) return false;
   return new Date(conversation.window_expires_at) > new Date();
+}
+
+// -----------------------------------------------------------------------------
+// Despacho por provedor — o único ponto do arquivo que sabe a diferença
+// -----------------------------------------------------------------------------
+
+async function dispatchText(
+  conversation: ConversationRow,
+  to: string,
+  text: string,
+  replyTo?: string
+): Promise<string | null> {
+  if (providerOf(conversation) === "evolution") {
+    const result = await evoSendText(instanceOf(conversation), to, text, {
+      quotedId: replyTo,
+    });
+    return result.key?.id ?? null;
+  }
+
+  const result = await sendText(to, text, { replyTo });
+  return result.messages?.[0]?.id ?? null;
+}
+
+/** Os nomes de tipo de mídia não coincidem entre os dois provedores. */
+const EVOLUTION_MEDIA_TYPE: Record<string, EvolutionMediaType> = {
+  image: "image",
+  video: "video",
+  audio: "audio",
+  document: "document",
+  sticker: "image",
+};
+
+async function dispatchMedia(
+  conversation: ConversationRow,
+  to: string,
+  input: { kind: MediaKind; link?: string; mediaId?: string; caption?: string; filename?: string }
+): Promise<string | null> {
+  if (providerOf(conversation) === "evolution") {
+    // A Evolution não tem upload prévio: ou é URL pública, ou é base64.
+    const media = input.link ?? input.mediaId;
+    if (!media) {
+      throw new Error("Canal evolution exige `link` (URL pública) ou base64 na mídia.");
+    }
+    const result = await evoSendMedia(instanceOf(conversation), to, {
+      mediatype: EVOLUTION_MEDIA_TYPE[input.kind] ?? "document",
+      media,
+      caption: input.caption,
+      fileName: input.filename,
+    });
+    return result.key?.id ?? null;
+  }
+
+  const result = await sendMedia(to, input.kind, {
+    link: input.link,
+    id: input.mediaId,
+    caption: input.caption,
+    filename: input.filename,
+  });
+  return result.messages?.[0]?.id ?? null;
 }
 
 /** Grava a mensagem que acabou de sair. */
@@ -114,10 +213,12 @@ export async function sendTextMessage(input: {
   }
 
   try {
-    const result = await sendText(conversation.contacts.wa_id, input.text, {
-      replyTo: input.replyTo,
-    });
-    const waMessageId = result.messages?.[0]?.id ?? null;
+    const waMessageId = await dispatchText(
+      conversation,
+      conversation.contacts.wa_id,
+      input.text,
+      input.replyTo
+    );
 
     const messageId = await recordOutbound({
       conversationId: conversation.id,
@@ -170,9 +271,16 @@ export async function sendTemplateMessage(input: {
     return { ok: false, reason: "not_found", message: "Template não encontrado" };
   }
 
+  const provider = providerOf(conversation);
+
   // Enviar template não aprovado sempre falha na Meta e ainda conta como erro
   // na qualidade do número. Melhor barrar aqui.
-  if (template.status !== "APPROVED") {
+  //
+  // Em canal evolution não existe aprovação: o template é só uma mensagem
+  // pronta com {{n}}, que vai pelo mesmo caminho de um texto qualquer. O
+  // status LOCAL é o normal ali, e barrá-lo tornaria a tela de templates
+  // inútil para esse canal.
+  if (provider === "meta_cloud" && template.status !== "APPROVED") {
     return {
       ok: false,
       reason: "template_not_approved",
@@ -189,17 +297,24 @@ export async function sendTemplateMessage(input: {
     };
   }
 
-  try {
-    const result = await sendTemplate(
-      conversation.contacts.wa_id,
-      template.name,
-      template.language,
-      buildTemplateComponents(variables)
-    );
-    const waMessageId = result.messages?.[0]?.id ?? null;
+  // Substitui {{1}}, {{2}}... pelos valores reais. Na Meta serve de preview
+  // no inbox; na Evolution é a mensagem de verdade.
+  const bodyText = renderTemplatePreview(template.components, variables);
 
-    // Preview legível no inbox: substitui {{1}}, {{2}}... pelos valores reais.
-    const bodyText = renderTemplatePreview(template.components, variables);
+  try {
+    let waMessageId: string | null;
+
+    if (provider === "evolution") {
+      waMessageId = await dispatchText(conversation, conversation.contacts.wa_id, bodyText);
+    } else {
+      const result = await sendTemplate(
+        conversation.contacts.wa_id,
+        template.name,
+        template.language,
+        buildTemplateComponents(variables)
+      );
+      waMessageId = result.messages?.[0]?.id ?? null;
+    }
 
     const messageId = await recordOutbound({
       conversationId: conversation.id,
@@ -271,13 +386,13 @@ export async function sendMediaMessage(input: {
   }
 
   try {
-    const result = await sendMedia(conversation.contacts.wa_id, input.kind, {
+    const waMessageId = await dispatchMedia(conversation, conversation.contacts.wa_id, {
+      kind: input.kind,
       link: input.link,
-      id: input.mediaId,
+      mediaId: input.mediaId,
       caption: input.caption,
       filename: input.filename,
     });
-    const waMessageId = result.messages?.[0]?.id ?? null;
 
     const messageId = await recordOutbound({
       conversationId: conversation.id,
@@ -321,9 +436,13 @@ async function handleSendFailure(
   }
 ): Promise<SendOutcome> {
   const isMeta = err instanceof MetaApiError;
+  const isEvolution = err instanceof EvolutionApiError;
+
   const details = isMeta
     ? { code: err.details?.code, message: err.message, subcode: err.details?.error_subcode }
-    : { message: err instanceof Error ? err.message : String(err) };
+    : isEvolution
+      ? { code: err.status, message: err.message, provider: "evolution" }
+      : { message: err instanceof Error ? err.message : String(err) };
 
   // A mensagem falhada continua visível no painel — o agente precisa saber.
   await recordOutbound({
@@ -350,10 +469,22 @@ async function handleSendFailure(
     };
   }
 
+  // Sessão caída é o erro característico da Evolution e não se resolve
+  // retentando: alguém tem que ler o QR de novo. A mensagem tem que dizer
+  // isso, senão o atendente fica clicando em enviar.
+  if (isEvolution && err.isDisconnected) {
+    return {
+      ok: false,
+      reason: "disconnected",
+      message:
+        "O WhatsApp desconectou desta instância. Reconecte lendo o QR em Canais.",
+    };
+  }
+
   return {
     ok: false,
     reason: "meta_error",
     message: details.message ?? "Falha ao enviar",
-    code: isMeta ? err.details?.code : undefined,
+    code: isMeta ? err.details?.code : isEvolution ? err.status : undefined,
   };
 }

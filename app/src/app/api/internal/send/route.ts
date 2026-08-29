@@ -45,6 +45,9 @@ const STATUS_BY_REASON: Record<string, number> = {
   not_found: 404,
   outside_window: 409,
   template_not_approved: 409,
+  // Sessão da Evolution caída: é indisponibilidade temporária, e 503 diz ao
+  // n8n que vale a pena retentar — ao contrário dos 409 acima.
+  disconnected: 503,
   meta_error: 502,
 };
 

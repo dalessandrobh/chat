@@ -1,8 +1,11 @@
 /**
- * Variáveis de ambiente, validadas uma vez no boot.
+ * Variáveis de ambiente, validadas na primeira vez que são usadas.
  *
- * Falhar aqui é intencional: é muito melhor o container não subir do que
- * descobrir um token faltando quando a primeira mensagem chegar.
+ * O projeto fala WhatsApp por dois provedores — Meta Cloud API e Evolution
+ * API — e quase nunca pelos dois ao mesmo tempo. Exigir as credenciais dos
+ * dois no boot travaria o container por falta de um token que ninguém vai
+ * usar. Então cada segredo é um getter: falta só estoura quando alguém
+ * realmente tenta usar aquele provedor, e aí a mensagem já diz qual é.
  */
 
 function required(name: string): string {
@@ -19,6 +22,10 @@ function optional(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
 }
 
+function isSet(name: string): boolean {
+  return Boolean(process.env[name]);
+}
+
 /** Config usada apenas no servidor. Nunca importar de um Client Component. */
 export const serverEnv = {
   supabaseUrl: required("NEXT_PUBLIC_SUPABASE_URL"),
@@ -27,13 +34,53 @@ export const serverEnv = {
   meta: {
     /** Versão da Graph API. Subir com cuidado: a Meta muda contratos. */
     apiVersion: optional("META_API_VERSION", "v21.0"),
-    accessToken: required("META_ACCESS_TOKEN"),
-    phoneNumberId: required("META_PHONE_NUMBER_ID"),
-    wabaId: required("META_WABA_ID"),
+    get accessToken() {
+      return required("META_ACCESS_TOKEN");
+    },
+    get phoneNumberId() {
+      return required("META_PHONE_NUMBER_ID");
+    },
+    get wabaId() {
+      return required("META_WABA_ID");
+    },
     /** Usado para validar a assinatura X-Hub-Signature-256 dos webhooks. */
-    appSecret: required("META_APP_SECRET"),
+    get appSecret() {
+      return required("META_APP_SECRET");
+    },
     /** Ecoado no handshake GET do webhook. */
-    verifyToken: required("META_WEBHOOK_VERIFY_TOKEN"),
+    get verifyToken() {
+      return required("META_WEBHOOK_VERIFY_TOKEN");
+    },
+  },
+
+  evolution: {
+    /** Ex.: http://evolution-api:8080 (rede interna) ou https://evo.dominio */
+    get baseUrl() {
+      return required("EVOLUTION_BASE_URL").replace(/\/+$/, "");
+    },
+    /** AUTHENTICATION_API_KEY da Evolution. Vai no header `apikey`. */
+    get apiKey() {
+      return required("EVOLUTION_API_KEY");
+    },
+    /**
+     * Segredo NOSSO, não da Evolution: exigido no Authorization do webhook
+     * de entrada. A Evolution não assina os webhooks dela, então sem isso
+     * qualquer um que descubra a URL consegue injetar mensagem falsa no
+     * inbox.
+     */
+    get webhookToken() {
+      return required("EVOLUTION_WEBHOOK_TOKEN");
+    },
+  },
+
+  /** Quais provedores estão configurados. Usado para telas e diagnóstico. */
+  providers: {
+    get meta() {
+      return isSet("META_ACCESS_TOKEN") && isSet("META_PHONE_NUMBER_ID");
+    },
+    get evolution() {
+      return isSet("EVOLUTION_BASE_URL") && isSet("EVOLUTION_API_KEY");
+    },
   },
 
   /** Bearer que o n8n usa para chamar /api/internal/*. */
