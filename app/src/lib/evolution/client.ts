@@ -264,6 +264,23 @@ export function connectInstance(instance: string): Promise<InstanceConnectResult
   return evoFetch(`/instance/connect/${encodeURIComponent(instance)}`);
 }
 
+export interface InstanceInfo {
+  name?: string;
+  instanceName?: string;
+  connectionStatus?: string;
+  /** JID do número pareado, ex.: 5531999998888@s.whatsapp.net */
+  ownerJid?: string;
+  profileName?: string;
+}
+
+/**
+ * Lista as instâncias. É o único endpoint que devolve o número pareado —
+ * connectionState só diz se está de pé.
+ */
+export function fetchInstances(): Promise<InstanceInfo[]> {
+  return evoFetch<InstanceInfo[]>("/instance/fetchInstances");
+}
+
 export function connectionState(instance: string): Promise<InstanceState> {
   return evoFetch(`/instance/connectionState/${encodeURIComponent(instance)}`);
 }

@@ -10,7 +10,12 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { currentAgent, unauthorized } from "@/lib/auth";
-import { EvolutionApiError, connectionState } from "@/lib/evolution/client";
+import {
+  EvolutionApiError,
+  connectionState,
+  fetchInstances,
+  jidToWaId,
+} from "@/lib/evolution/client";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const agent = await currentAgent();
@@ -21,7 +26,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const { data: channel } = await db
     .from("channels")
-    .select("id, provider, instance_name, connection_state")
+    .select("id, provider, instance_name, connection_state, display_phone_number")
     .eq("id", id)
     .maybeSingle();
 
@@ -37,15 +42,26 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const result = await connectionState(channel.instance_name);
     const state = result.instance?.state ?? "unknown";
 
+    const patch: Record<string, unknown> = {};
+
     // Mantém o banco em dia mesmo se o webhook tiver se perdido.
     if (state !== channel.connection_state) {
-      await db
-        .from("channels")
-        .update({
-          connection_state: state,
-          ...(state === "open" ? { connected_at: new Date().toISOString() } : {}),
-        })
-        .eq("id", id);
+      patch.connection_state = state;
+      if (state === "open") patch.connected_at = new Date().toISOString();
+    }
+
+    // Qual número foi pareado só se descobre depois da leitura do QR, e só
+    // fetchInstances conta. Buscamos uma vez e guardamos.
+    if (state === "open" && !channel.display_phone_number) {
+      const instances = await fetchInstances().catch(() => []);
+      const found = instances.find(
+        (i) => (i.name ?? i.instanceName) === channel.instance_name
+      );
+      if (found?.ownerJid) patch.display_phone_number = jidToWaId(found.ownerJid);
+    }
+
+    if (Object.keys(patch).length > 0) {
+      await db.from("channels").update(patch).eq("id", id);
     }
 
     return NextResponse.json({ state });
