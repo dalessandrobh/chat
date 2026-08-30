@@ -34,6 +34,7 @@ export type SendOutcome =
   | { ok: false; reason: "not_found"; message: string }
   | { ok: false; reason: "template_not_approved"; message: string }
   | { ok: false; reason: "disconnected"; message: string }
+  | { ok: false; reason: "invalid_number"; message: string }
   | { ok: false; reason: "meta_error"; message: string; code?: number };
 
 type Provider = "meta_cloud" | "evolution";
@@ -478,6 +479,17 @@ async function handleSendFailure(
       reason: "disconnected",
       message:
         "O WhatsApp desconectou desta instância. Reconecte lendo o QR em Canais.",
+    };
+  }
+
+  // Número sem WhatsApp não é falha de envio, é dado errado na base. A
+  // distinção importa: um vira `no_whatsapp`, o outro `send_failed`, e só o
+  // segundo sugere que o número está sendo rejeitado.
+  if (isEvolution && err.isInvalidNumber) {
+    return {
+      ok: false,
+      reason: "invalid_number",
+      message: "Este número não tem WhatsApp.",
     };
   }
 

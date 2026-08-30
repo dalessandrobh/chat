@@ -91,7 +91,13 @@ async function enviarUm(claim: Claim): Promise<boolean> {
   // Falha de sessão é do canal, não do número: insistir com este contato não
   // resolve nada e tirá-lo da base seria injusto com ele.
   if (resultado.reason !== "disconnected") {
-    await db.rpc("opt_out", { p_wa_id: claim.wa_id, p_reason: "send_failed" });
+    await db.rpc("opt_out", {
+      p_wa_id: claim.wa_id,
+      // Guardar o motivo certo é o que permite, depois, separar "a base tem
+      // números errados" de "o WhatsApp está recusando meus envios" — só o
+      // segundo é sinal de que o número está queimando.
+      p_reason: resultado.reason === "invalid_number" ? "no_whatsapp" : "send_failed",
+    });
   }
 
   return false;

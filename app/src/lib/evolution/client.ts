@@ -47,6 +47,27 @@ export class EvolutionApiError extends Error {
   }
 }
 
+/**
+ * A Evolution é irregular no formato do erro: às vezes string, às vezes lista,
+ * e no caso mais útil de todos — número sem WhatsApp — uma lista de objetos
+ * `[{exists: false, number: "…"}]`. `String(objeto)` daria "[object Object]" e
+ * o painel perderia justamente o motivo. Serializa como JSON, que é também o
+ * formato que `isInvalidNumber` procura.
+ */
+function toText(value: unknown): string | null {
+  if (typeof value === "string") return value || null;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    const partes = value.map(toText).filter((v): v is string => v !== null);
+    return partes.length ? partes.join("; ") : null;
+  }
+  if (value && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    return toText(obj.message) ?? toText(obj.error) ?? JSON.stringify(value);
+  }
+  return null;
+}
+
 /** A Evolution devolve `message` ora string, ora array, ora aninhado em `response`. */
 function extractMessage(details: Record<string, unknown> | null): string | null {
   if (!details) return null;
@@ -56,8 +77,8 @@ function extractMessage(details: Record<string, unknown> | null): string | null 
     details.error,
   ];
   for (const value of candidates) {
-    if (typeof value === "string" && value) return value;
-    if (Array.isArray(value) && value.length) return value.map(String).join("; ");
+    const texto = toText(value);
+    if (texto) return texto;
   }
   return null;
 }
