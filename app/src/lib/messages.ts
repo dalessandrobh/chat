@@ -370,7 +370,7 @@ export async function sendMediaMessage(input: {
   mediaId?: string;
   caption?: string;
   filename?: string;
-  author: "bot" | "agent";
+  author: "bot" | "agent" | "system";
   agentId?: string | null;
 }): Promise<SendOutcome> {
   const conversation = await loadConversation(input.conversationId);

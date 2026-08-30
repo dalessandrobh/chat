@@ -13,6 +13,8 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env";
+import { sendTextMessage } from "@/lib/messages";
+import { CONFIRMACAO_SAIDA, pediuParaSair } from "@/lib/opt-out";
 import {
   parseWebhook,
   verifyWebhookToken,
@@ -135,6 +137,13 @@ async function handleInboundMessage(event: EvoInboundMessage) {
     .eq("provider", "evolution")
     .eq("event_key", event.waMessageId);
 
+  // Pedido de saída tem precedência sobre tudo: nem bot responde, nem
+  // campanha alcança de novo.
+  if (!outbound && pediuParaSair(event.body)) {
+    await handleOptOut(conversationId as string, event.from);
+    return;
+  }
+
   if (outbound) {
     // O dono respondeu pelo celular. Deixar o bot seguir depois disso seria
     // duas vozes na mesma conversa, então a resposta manual vale como
@@ -159,6 +168,28 @@ async function handleInboundMessage(event: EvoInboundMessage) {
 
   if (conversation?.mode === "bot") {
     void forwardToN8n(conversation.id, event);
+  }
+}
+
+/**
+ * Tira da lista e confirma para a pessoa.
+ *
+ * A confirmação não é gentileza: sem resposta, quem pediu para sair repete o
+ * pedido — e a segunda tentativa costuma ser o botão de denunciar.
+ */
+async function handleOptOut(conversationId: string, waId: string) {
+  const db = supabaseAdmin();
+
+  const { error } = await db.rpc("opt_out", { p_wa_id: waId, p_reason: "opt_out" });
+  if (error) console.error("[opt-out] falha ao remover da lista", error);
+
+  const enviada = await sendTextMessage({
+    conversationId,
+    text: CONFIRMACAO_SAIDA,
+    author: "system",
+  });
+  if (!enviada.ok) {
+    console.error(`[opt-out] confirmação não enviada: ${enviada.message}`);
   }
 }
 
@@ -218,7 +249,21 @@ async function handleStatusUpdate(event: EvoStatusUpdate) {
   const column = STATUS_TIMESTAMP_COLUMN[event.status as keyof typeof STATUS_TIMESTAMP_COLUMN];
   if (column) patch[column] = event.timestamp.toISOString();
 
-  await supabaseAdmin().from("messages").update(patch).eq("wa_message_id", event.waMessageId);
+  const db = supabaseAdmin();
+  await db.from("messages").update(patch).eq("wa_message_id", event.waMessageId);
+
+  // A mesma confirmação resolve o destinatário da campanha. É por existir este
+  // retorno que o painel não precisa de um status "inconclusivo": todo envio
+  // aceito termina entregue, lido ou falhado.
+  const destino: Record<string, unknown> = { status: event.status };
+  if (event.status === "delivered") destino.delivered_at = event.timestamp.toISOString();
+  if (event.status === "read") destino.read_at = event.timestamp.toISOString();
+  if (event.status === "failed") destino.failed_at = event.timestamp.toISOString();
+
+  await db
+    .from("campaign_recipients")
+    .update(destino)
+    .eq("wa_message_id", event.waMessageId);
 }
 
 // -----------------------------------------------------------------------------
