@@ -37,6 +37,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const supabase = await supabaseServer();
+
+  // "Disparar agora" pula a promoção scheduled → running feita no banco, que é
+  // onde started_at seria preenchido — e é o primeiro dado que se procura
+  // quando algo sai errado. Só na primeira vez: "Retomar" também manda
+  // `running`, e sobrescrever aqui apagaria a hora em que a campanha começou.
+  if (parsed.data.status === "running") {
+    const { data: atual } = await supabase
+      .from("campaigns")
+      .select("started_at")
+      .eq("id", id)
+      .maybeSingle();
+    if (atual && !atual.started_at) patch.started_at = new Date().toISOString();
+  }
+  if (parsed.data.status === "canceled") patch.finished_at = new Date().toISOString();
   const { data, error } = await supabase
     .from("campaigns")
     .update(patch)
