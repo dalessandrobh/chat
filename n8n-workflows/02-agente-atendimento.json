@@ -1,0 +1,417 @@
+{
+  "name": "Chat — Agente de atendimento",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chat-inbound",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "id": "webhook-inbound",
+      "name": "Mensagem recebida",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        300
+      ],
+      "webhookId": "chat-inbound",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "chat-service-token",
+          "name": "Chat — token de serviço"
+        }
+      },
+      "notes": "O painel chama aqui quando chega mensagem E a conversa está em modo bot."
+    },
+    {
+      "parameters": {
+        "jsCode": "// O webhook entrega o corpo em `body`. Aqui viram campos planos, e o resto\n// do workflow não precisa saber como o painel monta o payload.\nreturn $input.all().map((item) => {\n  const b = item.json.body ?? item.json;\n  return {\n    json: {\n      conversationId: b.conversationId,\n      waId: b.from ?? null,\n      nome: b.profileName ?? 'cliente',\n      tipo: b.type ?? 'text',\n      texto: (b.text ?? '').trim(),\n    },\n  };\n});"
+      },
+      "id": "normalizar",
+      "name": "Normalizar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e-texto",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.tipo }}",
+              "rightValue": "text"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e-texto",
+      "name": "É texto?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -280,
+        300
+      ],
+      "notes": "Áudio e imagem entram na Fase 3. Até lá o agente não finge que entendeu."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://chat-app:3000/api/internal/conversations/{{ $json.conversationId }}/context",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "contexto",
+      "name": "Buscar contexto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -60,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "chat-service-token",
+          "name": "Chat — token de serviço"
+        }
+      },
+      "notes": "Histórico real da conversa, incluindo o que o dono digitou no próprio celular."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "modo-bot",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.mode }}",
+              "rightValue": "bot"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ainda-bot",
+      "name": "Ainda com o bot?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        160,
+        200
+      ],
+      "notes": "Alguém pode ter assumido a conversa entre o webhook e agora. A checagem é barata e evita o agente falar por cima de uma pessoa."
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Normalizar').item.json.texto }}",
+        "options": {
+          "systemMessage": "=Você é o atendimento da Eco Aquecedores no WhatsApp.\n\n# Como falar\n- Português do Brasil, cordial e direto. Nada de linguagem de folheto.\n- Mensagem de WhatsApp: curta. Duas ou três linhas, não parágrafos.\n- Uma pergunta por vez. Ninguém responde a um questionário no celular.\n- Use o nome da pessoa quando souber, sem repetir a cada frase.\n\n# O que você NÃO faz\nVocê não sabe preço, prazo de entrega, condição de pagamento, promoção nem\nficha técnica de produto. Não estime, não dê faixa, não diga \"em torno de\".\nSe a pessoa perguntar qualquer uma dessas coisas, use a ferramenta\nescalar_para_humano e avise que alguém já vai responder.\n\nInventar um preço e o cliente descobrir depois que é outro custa mais caro\nque demorar dez minutos para responder.\n\n# O que você faz\n- Recebe bem, entende o que a pessoa procura e reúne o que a equipe precisa\n  saber para atender direito:\n  - o nome dela;\n  - a cidade;\n  - se é para casa, piscina ou empresa;\n  - quantas pessoas usam o chuveiro, quando for casa.\n- Tira dúvidas gerais sobre como funciona aquecimento solar, desde que a\n  resposta não dependa de número, preço ou modelo específico.\n- Quando tiver o essencial, avise que vai passar para um consultor e use a\n  ferramenta escalar_para_humano.\n\n# Passar para uma pessoa\nUse escalar_para_humano quando:\n- pedirem para falar com alguém, um vendedor ou um humano;\n- perguntarem preço, prazo, pagamento ou disponibilidade;\n- a conversa travar, a pessoa se irritar ou você não souber o que responder;\n- você já tiver reunido as informações da qualificação.\n\nDepois de chamar a ferramenta, mande uma mensagem curta dizendo que já\nchamou alguém. Não prometa horário.\n\n# Honestidade\nSe perguntarem se você é um robô ou uma inteligência artificial, diga que\nsim, que é um atendimento automático, e que pode chamar uma pessoa na hora.\nNunca afirme ser humano.\n\n# Conversa até agora\n{{ $json.transcricao || '(primeira mensagem)' }}\n\nA última linha é a mensagem que você precisa responder agora."
+        }
+      },
+      "id": "agente",
+      "name": "Agente",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        400,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "model": "=claude-sonnet-5",
+        "options": {
+          "temperature": 0.3,
+          "maxTokensToSample": 700
+        }
+      },
+      "id": "modelo",
+      "name": "Claude",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.2,
+      "position": [
+        330,
+        420
+      ],
+      "notes": "O modelo vai como expressão de propósito: a lista fixa desta versão do n8n é anterior ao Claude 5, e escolher pelo dropdown apagaria o valor."
+    },
+    {
+      "parameters": {
+        "toolDescription": "Passa a conversa para uma pessoa da equipe. Use quando pedirem atendente, quando perguntarem preço, prazo, pagamento ou disponibilidade, quando a pessoa se irritar, ou quando você já tiver reunido os dados da qualificação. Não precisa de parâmetros.",
+        "method": "POST",
+        "url": "http://chat-app:3000/api/internal/escalate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ conversationId: $('Normalizar').item.json.conversationId, reason: 'O agente pediu ajuda humana' }) }}",
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "ferramenta-escalar",
+      "name": "escalar_para_humano",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        530,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://chat-app:3000/api/internal/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'text', conversationId: $('Normalizar').item.json.conversationId, text: $json.output }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "responder",
+      "name": "Responder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        760,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "chat-service-token",
+          "name": "Chat — token de serviço"
+        }
+      },
+      "notes": "neverError: se um humano assumir no meio do caminho, a API devolve 409 e o workflow encerra em silêncio em vez de acusar falha."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://chat-app:3000/api/internal/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'text', conversationId: $json.conversationId, text: 'Recebi seu arquivo, mas por aqui ainda só consigo ler texto. Já estou chamando uma pessoa da equipe para ver com você.' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "avisar-midia",
+      "name": "Avisar que não leio áudio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -60,
+        420
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "chat-service-token",
+          "name": "Chat — token de serviço"
+        }
+      },
+      "notes": "Honesto: não finge que entendeu o áudio."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://chat-app:3000/api/internal/escalate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ conversationId: $('Normalizar').item.json.conversationId, reason: 'Mensagem de mídia, que o agente ainda não lê' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "escalar-midia",
+      "name": "Escalar (mídia)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        160,
+        420
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "chat-service-token",
+          "name": "Chat — token de serviço"
+        }
+      },
+      "notes": "Fila humana: a pessoa mandou algo que o bot não processa."
+    },
+    {
+      "parameters": {},
+      "id": "fim-humano",
+      "name": "Humano assumiu — encerra",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        400,
+        60
+      ]
+    }
+  ],
+  "connections": {
+    "Mensagem recebida": {
+      "main": [
+        [
+          {
+            "node": "Normalizar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar": {
+      "main": [
+        [
+          {
+            "node": "É texto?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "É texto?": {
+      "main": [
+        [
+          {
+            "node": "Buscar contexto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Avisar que não leio áudio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Avisar que não leio áudio": {
+      "main": [
+        [
+          {
+            "node": "Escalar (mídia)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar contexto": {
+      "main": [
+        [
+          {
+            "node": "Ainda com o bot?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ainda com o bot?": {
+      "main": [
+        [
+          {
+            "node": "Agente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Humano assumiu — encerra",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente": {
+      "main": [
+        [
+          {
+            "node": "Responder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "escalar_para_humano": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
