@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { decodificar, lerPlanilha, MODELO_CSV, type Leitura } from "@/lib/planilha";
 
 interface Contato {
   id: string;
@@ -48,7 +49,7 @@ export function ContatosClient() {
           onClick={() => setImportando((v) => !v)}
           className="ml-auto rounded-lg bg-wa-teal px-3 py-1.5 text-sm font-medium text-white"
         >
-          {importando ? "Fechar" : "Importar contatos"}
+          {importando ? "Fechar" : "Importar planilha"}
         </button>
       </div>
 
@@ -135,47 +136,70 @@ function Cartao({ rotulo, valor, cor }: { rotulo: string; valor: number; cor?: s
 
 // -----------------------------------------------------------------------------
 
+/** A API aceita 5000 por requisição; planilha grande vai em pedaços. */
+const LOTE = 2000;
+
 function Importador({ onDone }: { onDone: (r: { kind: "ok" | "erro"; text: string }) => void }) {
   const [texto, setTexto] = useState("");
   const [tags, setTags] = useState("");
+  const [leitura, setLeitura] = useState<Leitura | null>(null);
+  const [arquivo, setArquivo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const inputArquivo = useRef<HTMLInputElement>(null);
+
+  const tagList = tags.split(",").map((t) => t.trim()).filter(Boolean);
+
+  // Reler a cada tecla é barato e evita o pior fluxo possível: importar,
+  // descobrir que a coluna errada foi lida, e ter que desfazer no banco.
+  function reler(novoTexto: string, novasTags = tagList) {
+    setLeitura(novoTexto.trim() ? lerPlanilha(novoTexto, novasTags) : null);
+  }
+
+  async function abrir(file: File) {
+    const bruto = decodificar(await file.arrayBuffer());
+    setArquivo(file.name);
+    setTexto(bruto);
+    reler(bruto);
+  }
+
+  function baixarModelo() {
+    // BOM na frente: sem ele o Excel abre o CSV como ASCII e come os acentos.
+    const blob = new Blob(["\ufeff" + MODELO_CSV], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "modelo-contatos.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
 
   async function importar() {
+    if (!leitura?.contatos.length) return;
     setBusy(true);
-    const tagList = tags.split(",").map((t) => t.trim()).filter(Boolean);
-    const contatos: Array<{ name: string; waId: string; tags: string[] }> = [];
-    const problemas: string[] = [];
-
-    texto.split(/\r?\n/).forEach((linha, i) => {
-      const bruto = linha.trim();
-      if (!bruto) return;
-      const [nome, numero] = bruto.split(/[;,\t]/).map((p) => p?.trim());
-      // Só dígitos: planilha vem cheia de (31) 9 9999-9999.
-      const limpo = (numero ?? "").replace(/\D/g, "");
-      if (!nome || !limpo) { problemas.push(`linha ${i + 1}`); return; }
-      contatos.push({ name: nome, waId: limpo, tags: tagList });
-    });
-
-    if (contatos.length === 0) {
-      onDone({ kind: "erro", text: "Nenhuma linha válida. Use: Nome; 5531999998888" });
-      setBusy(false);
-      return;
-    }
 
     try {
-      const r = await fetch("/api/audience", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contatos }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error);
-      onDone({
-        kind: "ok",
-        text: `${j.inseridos} contatos importados` +
-          (j.ignorados ? `, ${j.ignorados} já existiam e foram mantidos como estavam` : "") +
-          (problemas.length ? `. Ignorei ${problemas.length} linha(s) sem nome ou número.` : "."),
-      });
+      let inseridos = 0;
+      let ignorados = 0;
+
+      for (let i = 0; i < leitura.contatos.length; i += LOTE) {
+        const lote = leitura.contatos.slice(i, i + LOTE);
+        const r = await fetch("/api/audience", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contatos: lote.map((c) => ({ name: c.nome, waId: c.waId, tags: c.tags })),
+          }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error);
+        inseridos += j.inseridos;
+        ignorados += j.ignorados;
+      }
+
+      const partes = [`${inseridos} contatos importados`];
+      if (ignorados) partes.push(`${ignorados} já estavam na base e ficaram como estavam`);
+      if (leitura.repetidas) partes.push(`${leitura.repetidas} repetidos na planilha`);
+      if (leitura.rejeitadas.length) partes.push(`${leitura.rejeitadas.length} linhas sem nome ou número válido`);
+      onDone({ kind: "ok", text: partes.join(", ") + "." });
     } catch (err) {
       onDone({ kind: "erro", text: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -183,39 +207,126 @@ function Importador({ onDone }: { onDone: (r: { kind: "ok" | "erro"; text: strin
     }
   }
 
+  const avisos = leitura?.contatos.filter((c) => c.aviso) ?? [];
+
   return (
     <div className="mt-4 rounded-lg border p-4" style={{ background: "var(--panel)", borderColor: "var(--border)" }}>
-      <p className="text-sm font-medium">Colar da planilha</p>
-      <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
-        Uma linha por contato: <code>Nome; 5531999998888</code>. Aceita vírgula,
-        ponto e vírgula ou tabulação. O número é limpo automaticamente — pode
-        colar com parênteses e traços.
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={() => inputArquivo.current?.click()}
+          className="rounded-lg bg-wa-teal px-3 py-1.5 text-sm font-medium text-white"
+        >
+          Escolher planilha
+        </button>
+        <input
+          ref={inputArquivo}
+          type="file"
+          accept=".csv,.tsv,.txt,text/csv,text/plain,text/tab-separated-values"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void abrir(f);
+          }}
+        />
+        {arquivo && <span className="text-sm">{arquivo}</span>}
+        <button onClick={baixarModelo} className="ml-auto text-xs underline" style={{ color: "var(--muted)" }}>
+          Baixar modelo
+        </button>
+      </div>
+
+      <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
+        Salve a planilha como <strong>CSV</strong> (no Excel: Arquivo → Salvar
+        como → CSV; no Google Planilhas: Fazer download → CSV). Colunas
+        reconhecidas pelo título: nome, telefone/celular/whatsapp e
+        etiquetas — em qualquer ordem. Sem título, lê nas três primeiras
+        colunas nessa ordem. O número pode vir com parênteses, traços e espaços,
+        e o DDI 55 é acrescentado quando falta.
       </p>
+
       <textarea
-        rows={8}
+        rows={5}
         value={texto}
-        onChange={(e) => setTexto(e.target.value)}
-        placeholder={"Maria Silva; (31) 99999-8888\nJoão Souza; 5531988887777"}
+        onChange={(e) => { setTexto(e.target.value); setArquivo(null); reler(e.target.value); }}
+        placeholder={"Ou cole aqui:\nMaria Silva; (31) 99999-8888\nJoão Souza; 31 98888-7777"}
         className="mt-3 w-full rounded-lg border px-3 py-2 font-mono text-xs outline-none"
         style={{ background: "var(--bg)", borderColor: "var(--border)" }}
       />
+
       <input
         value={tags}
-        onChange={(e) => setTags(e.target.value)}
-        placeholder="Etiquetas, separadas por vírgula (ex.: clientes-2025, bh)"
+        onChange={(e) => {
+          setTags(e.target.value);
+          reler(texto, e.target.value.split(",").map((t) => t.trim()).filter(Boolean));
+        }}
+        placeholder="Etiquetas para todos desta importação (ex.: clientes-2025, bh)"
         className="mt-2 w-full rounded-lg border px-3 py-2 text-sm outline-none"
         style={{ background: "var(--bg)", borderColor: "var(--border)" }}
       />
-      <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
+
+      {leitura && (
+        <div className="mt-4">
+          <p className="text-sm font-medium">
+            {leitura.contatos.length} contatos prontos
+            {leitura.temCabecalho ? " (primeira linha lida como título das colunas)" : ""}
+          </p>
+
+          {leitura.contatos.length > 0 && (
+            <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border" style={{ borderColor: "var(--border)" }}>
+              <table className="w-full text-left text-xs">
+                <tbody>
+                  {leitura.contatos.slice(0, 100).map((c) => (
+                    <tr key={c.waId} className="border-b last:border-0" style={{ borderColor: "var(--border)" }}>
+                      <td className="px-2 py-1">{c.nome}</td>
+                      <td className="px-2 py-1 font-mono">{c.waId}</td>
+                      <td className="px-2 py-1" style={{ color: "var(--muted)" }}>{c.tags.join(", ")}</td>
+                      <td className="px-2 py-1 text-amber-700 dark:text-amber-400">{c.aviso ?? ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {leitura.contatos.length > 100 && (
+                <p className="px-2 py-1 text-xs" style={{ color: "var(--muted)" }}>
+                  … e mais {leitura.contatos.length - 100}.
+                </p>
+              )}
+            </div>
+          )}
+
+          {avisos.length > 0 && (
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+              {avisos.length} número(s) com ressalva. Eles entram assim mesmo — o
+              envio confirma na hora se têm WhatsApp.
+            </p>
+          )}
+
+          {leitura.rejeitadas.length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs text-red-600 dark:text-red-400">
+                {leitura.rejeitadas.length} linha(s) fora
+              </summary>
+              <ul className="mt-1 space-y-0.5 text-xs" style={{ color: "var(--muted)" }}>
+                {leitura.rejeitadas.slice(0, 30).map((r) => (
+                  <li key={r.linha}>
+                    linha {r.linha}: {r.motivo} — <span className="font-mono">{r.conteudo}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
+
+      <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>
         Quem já está na base não é sobrescrito: reimportar a planilha inteira
         não devolve à lista quem pediu para sair.
       </p>
+
       <button
         onClick={importar}
-        disabled={busy || !texto.trim()}
+        disabled={busy || !leitura?.contatos.length}
         className="mt-3 rounded-lg bg-wa-green px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
       >
-        {busy ? "Importando…" : "Importar"}
+        {busy ? "Importando…" : `Importar ${leitura?.contatos.length ?? 0} contatos`}
       </button>
     </div>
   );

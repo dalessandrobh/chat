@@ -33,6 +33,48 @@ que a reimportação da planilha de amanhã ressuscite quem saiu hoje — o upse
 de `/api/audience` usa `ignoreDuplicates`, então um número já conhecido é
 ignorado, não sobrescrito.
 
+## Importar a base
+
+A tela de Contatos lê **CSV e TSV** — não `.xlsx`. Um `.xlsx` é um zip de XML e
+exigiria uma biblioteca; a única publicada no npm está parada desde 2022 com
+falhas conhecidas, e não vale carregá-la para dentro do projeto quando o Excel
+e o Google Planilhas exportam CSV em dois cliques.
+
+`src/lib/planilha.ts` faz a leitura, separada da tela porque é a parte que
+erra:
+
+- **Codificação**: o Excel em português salva CSV em Windows-1252. Decodificar
+  como UTF-8 transforma todo "José" em "Jos�" — e o nome é justamente o que vai
+  dentro da mensagem. Se aparecer o caractere de substituição, relê em 1252.
+- **Delimitador**: ponto e vírgula, tabulação ou vírgula, o que aparecer mais.
+  Ponto e vírgula desempata, que é o padrão do Excel brasileiro.
+- **Cabeçalho**: é cabeçalho se nenhuma célula da primeira linha vira um número
+  válido. Colunas achadas pelo título (nome/cliente, telefone/celular/whatsapp,
+  etiquetas/tags), em qualquer ordem; título desconhecido cai nas três
+  primeiras colunas.
+- **Repetidos**: primeira ocorrência vence. Planilha de CRM repete cliente com
+  dois cadastros, e a primeira linha costuma ser a mais recente.
+
+### O número
+
+A normalização decide pelo **tamanho**, não pelo prefixo. O atalho óbvio —
+"começa com 55, então já tem o país" — quebra em Santa Maria: o DDD 55 existe.
+`55999998888` tem onze dígitos e é um celular do DDD 55, não um número já
+internacionalizado.
+
+| Dígitos | Leitura |
+|---|---|
+| 11 | DDD + celular → acrescenta 55 |
+| 10 | DDD + 8 dígitos → acrescenta 55, com ressalva do 9º dígito |
+| 13 começando com 55 | já completo |
+| 12 começando com 55 | completo, com ressalva do 9º dígito |
+| 12 a 15 | outro país, passa como está |
+| até 9 | recusado: falta o DDD |
+
+Nada é gravado antes de a tela mostrar o que entendeu. O caminho ruim aqui não
+é a linha recusada — é importar mil contatos com a coluna errada e ter que
+desfazer no banco.
+
 ## Status do envio — e por que não há "inconclusivo"
 
 `pending → sent → delivered → read`, ou `failed`, ou `skipped`.
