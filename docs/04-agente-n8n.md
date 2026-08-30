@@ -180,3 +180,25 @@ certa para virar índice.
 Botão **Ver o que o agente recebe**. O texto vem de `chat.render_knowledge()`,
 a mesma função que alimenta o prompt — a tela não monta a sua própria versão,
 justamente para as duas não divergirem sem ninguém notar.
+
+## Exportar e importar
+
+**Exportar** baixa a base como Markdown, com as instruções de formato dentro
+do próprio arquivo — quem for editar precisa das regras junto, não num manual
+guardado em outro lugar. Serve para jogar numa LLM e pedir para ampliar.
+
+**Importar** substitui a base inteira; não mescla. Mesclar por título parece
+gentil e não é: renomear uma seção criaria uma cópia em vez de editar, e
+ninguém entenderia por que a base dobrou. Exporte antes se quiser guardar o
+que está no ar.
+
+A troca roda em `chat.replace_knowledge()`, transação única. Em duas chamadas
+separadas existiria uma janela com a base vazia — justamente quando o agente
+mais inventaria.
+
+A caixa **"importar tudo desligado"** vem marcada. Texto que passou por uma
+LLM merece leitura antes de virar o que o agente afirma ao cliente.
+
+O arquivo cita o teto recomendado: **12.000 caracteres ligados**, cerca de
+3.200 tokens, ~US$ 0,006 por mensagem, ~US$ 6 a cada mil. Seção desligada não
+custa nada.

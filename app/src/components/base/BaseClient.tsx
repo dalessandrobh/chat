@@ -22,6 +22,7 @@ export function BaseClient() {
   const [aviso, setAviso] = useState<{ kind: "ok" | "erro"; text: string } | null>(null);
   const [criando, setCriando] = useState(false);
   const [vendoPrompt, setVendoPrompt] = useState(false);
+  const [importando, setImportando] = useState(false);
 
   const refresh = useCallback(async () => {
     const r = await fetch("/api/knowledge");
@@ -76,6 +77,20 @@ export function BaseClient() {
           O que o agente sabe sobre o negócio.
         </p>
         <div className="ml-auto flex gap-2">
+          <a
+            href="/api/knowledge/export"
+            className="rounded-lg border px-3 py-1.5 text-sm"
+            style={{ borderColor: "var(--border)" }}
+          >
+            Exportar
+          </a>
+          <button
+            onClick={() => setImportando((v) => !v)}
+            className="rounded-lg border px-3 py-1.5 text-sm"
+            style={{ borderColor: "var(--border)" }}
+          >
+            {importando ? "Fechar" : "Importar"}
+          </button>
           <button
             onClick={() => setVendoPrompt((v) => !v)}
             className="rounded-lg border px-3 py-1.5 text-sm"
@@ -119,6 +134,18 @@ export function BaseClient() {
             {rendered || "(nenhuma seção ligada — o agente trabalha só com as regras do prompt)"}
           </pre>
         </div>
+      )}
+
+      {importando && (
+        <Importador
+          onDone={async (resultado) => {
+            setAviso(resultado);
+            if (resultado.kind === "ok") {
+              setImportando(false);
+              await refresh();
+            }
+          }}
+        />
       )}
 
       {criando && (
@@ -375,5 +402,108 @@ function Formulario({
         {busy ? "Criando…" : "Criar seção"}
       </button>
     </form>
+  );
+}
+
+// -----------------------------------------------------------------------------
+
+function Importador({
+  onDone,
+}: {
+  onDone: (r: { kind: "ok" | "erro"; text: string }) => void;
+}) {
+  const [content, setContent] = useState("");
+  const [desativarTudo, setDesativarTudo] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [avisos, setAvisos] = useState<string[]>([]);
+
+  async function lerArquivo(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) setContent(await file.text());
+  }
+
+  async function importar() {
+    setBusy(true);
+    setAvisos([]);
+    try {
+      const r = await fetch("/api/knowledge/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content, deactivateAll: desativarTudo }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error);
+      setAvisos(j.avisos ?? []);
+      onDone({
+        kind: "ok",
+        text: `${j.importadas} seções importadas, ${j.ligadas} ligadas. A base anterior foi substituída.`,
+      });
+    } catch (err) {
+      onDone({ kind: "erro", text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="mt-4 rounded-lg border p-4"
+      style={{ background: "var(--panel)", borderColor: "var(--border)" }}
+    >
+      <p className="text-sm font-medium">Importar base</p>
+      <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+        Substitui a base inteira — não mescla. Exporte antes se quiser guardar
+        o que está no ar. As instruções de formato vão dentro do próprio
+        arquivo exportado.
+      </p>
+
+      <input
+        type="file"
+        accept=".md,.txt,text/markdown,text/plain"
+        onChange={lerArquivo}
+        className="mt-3 block w-full text-sm"
+      />
+
+      <textarea
+        rows={8}
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        placeholder="…ou cole aqui o texto devolvido pela LLM"
+        className="mt-3 w-full rounded-lg border px-3 py-2 font-mono text-xs outline-none"
+        style={{ background: "var(--bg)", borderColor: "var(--border)" }}
+      />
+
+      <label className="mt-3 flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={desativarTudo}
+          onChange={(e) => setDesativarTudo(e.target.checked)}
+          className="mt-0.5"
+        />
+        <span>
+          Importar tudo desligado
+          <span className="block text-xs" style={{ color: "var(--muted)" }}>
+            Recomendado. Texto que passou por uma LLM merece uma leitura antes
+            de virar o que o agente afirma ao cliente.
+          </span>
+        </span>
+      </label>
+
+      {avisos.length > 0 && (
+        <ul className="mt-3 space-y-1 text-xs text-amber-700 dark:text-amber-400">
+          {avisos.map((a, i) => (
+            <li key={i}>• {a}</li>
+          ))}
+        </ul>
+      )}
+
+      <button
+        onClick={importar}
+        disabled={busy || !content.trim()}
+        className="mt-4 rounded-lg bg-wa-green px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+      >
+        {busy ? "Importando…" : "Substituir base"}
+      </button>
+    </div>
   );
 }
