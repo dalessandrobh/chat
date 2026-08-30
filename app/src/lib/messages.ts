@@ -193,7 +193,7 @@ async function recordOutbound(input: {
 export async function sendTextMessage(input: {
   conversationId: string;
   text: string;
-  author: "bot" | "agent";
+  author: "bot" | "agent" | "system";
   agentId?: string | null;
   replyTo?: string;
 }): Promise<SendOutcome> {

@@ -7,6 +7,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { currentAgent, unauthorized } from "@/lib/auth";
+import { sendTextMessage } from "@/lib/messages";
+import { mensagemDevolveu } from "@/lib/handoff-messages";
 
 const bodySchema = z.object({
   reason: z.string().max(500).optional(),
@@ -26,6 +28,13 @@ export async function POST(
   }
 
   const supabase = await supabaseServer();
+
+  const { data: antes } = await supabase
+    .from("conversations")
+    .select("mode")
+    .eq("id", id)
+    .maybeSingle();
+
   const { data, error } = await supabase.rpc("hand_back", {
     p_conversation_id: id,
     p_reason: parsed.data.reason ?? null,
@@ -33,6 +42,18 @@ export async function POST(
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  // Só avisa quem realmente saiu do atendimento humano.
+  if (antes?.mode === "human") {
+    const resultado = await sendTextMessage({
+      conversationId: id,
+      text: mensagemDevolveu(),
+      author: "bot",
+    });
+    if (!resultado.ok) {
+      console.error(`[handback] aviso não enviado: ${resultado.message}`);
+    }
   }
 
   return NextResponse.json({ ok: true, conversation: data });
