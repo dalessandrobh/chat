@@ -1,4 +1,5 @@
 /**
+ * GET   /api/campaigns/:id — o conteúdo exato que foi (ou será) enviado
  * PATCH /api/campaigns/:id — pausa, retoma, cancela ou agenda
  *
  * Pausar é a alavanca que importa. Campanha grande sai por horas, e a hora em
@@ -15,6 +16,41 @@ const schema = z.object({
   status: z.enum(["scheduled", "running", "paused", "canceled"]).optional(),
   scheduledAt: z.string().datetime({ offset: true }).nullable().optional(),
 });
+
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const agent = await currentAgent();
+  if (!agent) return unauthorized();
+
+  const { id } = await params;
+  const supabase = await supabaseServer();
+
+  // Um destinatário real serve de exemplo para o {nome}: ver o texto cru não
+  // responde a pergunta que se faz olhando uma campanha já enviada, que é
+  // "o que a pessoa leu".
+  const [{ data: campanha, error }, { data: exemplo }] = await Promise.all([
+    supabase
+      .from("campaigns")
+      .select(
+        "id, name, status, media_kind, body, media_url, media_filename, media_mime, " +
+          "scheduled_at, started_at, finished_at, window_start, window_end, weekdays, " +
+          "interval_min_seconds, interval_max_seconds, daily_limit"
+      )
+      .eq("id", id)
+      .maybeSingle(),
+    supabase
+      .from("campaign_recipients")
+      .select("name")
+      .eq("campaign_id", id)
+      .order("created_at")
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!campanha) return NextResponse.json({ error: "Campanha não encontrada." }, { status: 404 });
+
+  return NextResponse.json({ campanha, exemploNome: exemplo?.name ?? null });
+}
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const agent = await currentAgent();

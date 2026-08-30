@@ -20,6 +20,20 @@ interface Campanha {
   ignorados: number;
 }
 
+interface Detalhe {
+  media_kind: string;
+  body: string | null;
+  media_url: string | null;
+  media_filename: string | null;
+  media_mime: string | null;
+  window_start: string;
+  window_end: string;
+  weekdays: number[];
+  exemploNome: string | null;
+}
+
+const DIAS = ["", "seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
+
 const STATUS: Record<string, { texto: string; cor: string }> = {
   draft:     { texto: "Rascunho",  cor: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
   scheduled: { texto: "Agendada",  cor: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" },
@@ -33,6 +47,8 @@ export function CampanhasClient({ channelId }: { channelId: string | null }) {
   const [campanhas, setCampanhas] = useState<Campanha[]>([]);
   const [criando, setCriando] = useState(false);
   const [aviso, setAviso] = useState<{ kind: "ok" | "erro"; text: string } | null>(null);
+  const [aberta, setAberta] = useState<string | null>(null);
+  const [detalhes, setDetalhes] = useState<Record<string, Detalhe>>({});
 
   const refresh = useCallback(async () => {
     const r = await fetch("/api/campaigns");
@@ -47,6 +63,27 @@ export function CampanhasClient({ channelId }: { channelId: string | null }) {
     const t = setInterval(() => void refresh(), 10_000);
     return () => clearInterval(t);
   }, [refresh]);
+
+  // Carrega uma vez e guarda: o texto não muda depois que a campanha existe,
+  // e a lista recarrega a cada 10s — trafegar o corpo inteiro nesse ritmo, para
+  // todas as campanhas, seria pagar caro por algo que quase nunca é olhado.
+  async function verMensagem(id: string) {
+    if (aberta === id) {
+      setAberta(null);
+      return;
+    }
+    setAberta(id);
+    if (detalhes[id]) return;
+
+    const r = await fetch(`/api/campaigns/${id}`);
+    const j = await r.json();
+    if (!r.ok) {
+      setAviso({ kind: "erro", text: j.error });
+      setAberta(null);
+      return;
+    }
+    setDetalhes((d) => ({ ...d, [id]: { ...j.campanha, exemploNome: j.exemploNome } }));
+  }
 
   async function mudarStatus(id: string, status: string) {
     const r = await fetch(`/api/campaigns/${id}`, {
@@ -130,6 +167,10 @@ export function CampanhasClient({ channelId }: { channelId: string | null }) {
                 </span>
 
                 <div className="ml-auto flex gap-2">
+                  <button onClick={() => void verMensagem(c.campaign_id)}
+                          className="rounded-lg border px-2 py-1 text-xs" style={{ borderColor: "var(--border)" }}>
+                    {aberta === c.campaign_id ? "Ocultar mensagem" : "Ver mensagem"}
+                  </button>
                   {c.status === "running" && (
                     <button onClick={() => mudarStatus(c.campaign_id, "paused")}
                             className="rounded-lg border px-2 py-1 text-xs" style={{ borderColor: "var(--border)" }}>
@@ -150,6 +191,10 @@ export function CampanhasClient({ channelId }: { channelId: string | null }) {
                   )}
                 </div>
               </div>
+
+              {aberta === c.campaign_id && (
+                <Mensagem detalhe={detalhes[c.campaign_id]} />
+              )}
 
               <div className="mt-3 h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--bg)" }}>
                 <div className="h-full bg-wa-green" style={{ width: `${pct}%` }} />
@@ -174,6 +219,75 @@ export function CampanhasClient({ channelId }: { channelId: string | null }) {
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * O que foi enviado, do jeito que a pessoa recebeu.
+ *
+ * Mostra o texto já com o {nome} resolvido — ver o texto cru não responde a
+ * pergunta que se faz olhando uma campanha antiga, que é "o que ela leu". O
+ * original fica logo abaixo, quando os dois diferem.
+ */
+function Mensagem({ detalhe }: { detalhe: Detalhe | undefined }) {
+  if (!detalhe) {
+    return (
+      <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>
+        Carregando…
+      </p>
+    );
+  }
+
+  const nome = detalhe.exemploNome ?? "Maria Silva";
+  const corpo = detalhe.body ?? "";
+  const renderizado = corpo.replaceAll("{nome}", nome.split(" ")[0] ?? nome);
+  const temPlaceholder = renderizado !== corpo;
+
+  return (
+    <div className="mt-3 rounded-lg border p-3" style={{ borderColor: "var(--border)", background: "var(--bg)" }}>
+      {detalhe.media_url && (
+        <div className="mb-3">
+          {detalhe.media_kind === "image" && (
+            <img src={detalhe.media_url} alt={detalhe.media_filename ?? "imagem da campanha"}
+                 className="max-h-64 rounded-lg" />
+          )}
+          {detalhe.media_kind === "video" && (
+            <video src={detalhe.media_url} controls className="max-h-64 rounded-lg" />
+          )}
+          {detalhe.media_kind === "audio" && <audio src={detalhe.media_url} controls className="w-full" />}
+          {detalhe.media_kind === "document" && (
+            <a href={detalhe.media_url} target="_blank" rel="noopener noreferrer"
+               className="text-sm text-wa-teal underline">
+              {detalhe.media_filename ?? "arquivo"}
+            </a>
+          )}
+          <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+            {detalhe.media_filename} {detalhe.media_mime && `· ${detalhe.media_mime}`}
+          </p>
+        </div>
+      )}
+
+      {corpo ? (
+        <>
+          <p className="whitespace-pre-wrap text-sm">{renderizado}</p>
+          {temPlaceholder && (
+            <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
+              Exemplo com <strong>{nome}</strong>. Texto cadastrado:{" "}
+              <code className="whitespace-pre-wrap">{corpo}</code>
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
+          {detalhe.media_kind === "audio" ? "Áudio sem legenda." : "Sem texto."}
+        </p>
+      )}
+
+      <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>
+        Envia {DIAS.filter((_, i) => detalhe.weekdays.includes(i)).join(", ")} das{" "}
+        {detalhe.window_start.slice(0, 5)} às {detalhe.window_end.slice(0, 5)}.
+      </p>
     </div>
   );
 }
