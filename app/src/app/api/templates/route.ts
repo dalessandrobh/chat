@@ -8,6 +8,7 @@ import { z } from "zod";
 import { currentAgent, unauthorized } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createTemplate, MetaApiError } from "@/lib/meta/client";
+import { canManageTemplates } from "@/lib/roles";
 
 export async function GET() {
   const agent = await currentAgent();
@@ -81,7 +82,7 @@ function countVariables(text: string): number {
 export async function POST(request: Request) {
   const agent = await currentAgent();
   if (!agent) return unauthorized();
-  if (!["owner", "admin"].includes(agent.role)) {
+  if (!canManageTemplates(agent.role)) {
     return NextResponse.json({ error: "Apenas admin cria template" }, { status: 403 });
   }
 

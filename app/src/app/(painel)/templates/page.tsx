@@ -1,6 +1,7 @@
 import { supabaseServer } from "@/lib/supabase/server";
 import { TemplatesClient } from "@/components/templates/TemplatesClient";
 import type { Template } from "@/lib/types";
+import { canManageTemplates } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export default async function TemplatesPage() {
       <TemplatesClient
         initial={(templates ?? []) as Template[]}
         channelId={channel?.id ?? null}
-        canEdit={["owner", "admin"].includes(agent?.role ?? "")}
+        canEdit={canManageTemplates(agent?.role)}
       />
     </div>
   );

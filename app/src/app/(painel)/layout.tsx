@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
+import { canManageUsers, roleLabel } from "@/lib/roles";
 
 export default async function PainelLayout({
   children,
@@ -53,10 +54,15 @@ export default async function PainelLayout({
           <Link href="/canais" className="hover:underline">
             Canais
           </Link>
+          {canManageUsers(agent.role) && (
+            <Link href="/usuarios" className="hover:underline">
+              Usuários
+            </Link>
+          )}
         </nav>
 
         <span className="ml-auto text-xs" style={{ color: "var(--muted)" }}>
-          {agent.full_name ?? agent.email} · {agent.role}
+          {agent.full_name ?? agent.email} · {roleLabel(agent.role)}
         </span>
       </header>
 

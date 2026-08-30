@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabase/server";
 import { CanaisClient, type Channel } from "@/components/canais/CanaisClient";
+import { canManageChannels } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export default async function CanaisPage() {
     <div className="h-full overflow-y-auto">
       <CanaisClient
         initial={(channels ?? []) as Channel[]}
-        canManage={["owner", "admin"].includes(agent?.role ?? "")}
+        canManage={canManageChannels(agent?.role)}
       />
     </div>
   );

@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { currentAgent, unauthorized } from "@/lib/auth";
 import { EvolutionApiError, connectInstance } from "@/lib/evolution/client";
+import { canManageChannels } from "@/lib/roles";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const agent = await currentAgent();
@@ -18,7 +19,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   // Parear um número é dar acesso a todas as conversas dele. Fica com quem
   // administra, não com quem atende.
-  if (!["owner", "admin"].includes(agent.role)) {
+  if (!canManageChannels(agent.role)) {
     return NextResponse.json({ error: "Só administradores conectam canais." }, { status: 403 });
   }
 
