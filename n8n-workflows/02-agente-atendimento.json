@@ -145,7 +145,7 @@
     },
     {
       "parameters": {
-        "model": "=claude-sonnet-5",
+        "model": "claude-sonnet-5",
         "options": {
           "maxTokensToSample": 700
         }
@@ -158,7 +158,7 @@
         330,
         420
       ],
-      "notes": "Sem temperature/topP/topK de propósito: o Claude 5 recusa parâmetros de amostragem, e o nó só os omite quando ficam sem valor. O modelo vai como expressão porque a lista fixa do n8n é anterior a ele."
+      "notes": "Sem temperature/topP/topK de propósito: o Claude 5 recusa parâmetros de amostragem, e o nó só os omite quando ficam sem valor."
     },
     {
       "parameters": {

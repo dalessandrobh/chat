@@ -32,16 +32,15 @@ devolve a conversa inteira do banco — painel, celular e bot na mesma linha do
 tempo. As 40 últimas mensagens, o bastante para o assunto atual sem inflar o
 prompt.
 
-## Versão mínima do n8n
+## Versão do n8n
 
-**1.123.75 ou mais recente.** O nó do Claude é um invólucro do LangChain, e as
-versões antigas mandavam `top_p: -1` em toda chamada. Nenhum modelo Claude
-atual aceita parâmetro de amostragem — a resposta é `400 top_p is deprecated
-for this model`, e não há como desligar isso pelo workflow. A partir da 1.123
-esses campos nascem indefinidos e somem do JSON.
+Rodando **2.37.4**. A mínima é 1.123: as anteriores mandavam `top_p: -1` em
+toda chamada, e nenhum modelo Claude atual aceita parâmetro de amostragem
+(`400 top_p is deprecated for this model`), sem jeito de desligar pelo
+workflow.
 
-Pelo mesmo motivo o nó `Claude` não tem `temperature` nem `topP` configurados.
-Não adicione: qualquer um dos dois derruba a chamada.
+Pelo mesmo motivo o nó `Claude` não tem `temperature` nem `topP`. Não
+adicione: qualquer um dos dois derruba a chamada.
 
 ## Antes de importar
 
@@ -79,18 +78,28 @@ O sintoma, quando falta, é `Credentials not found` no nó `escalar_para_humano`
 O `import:workflow` também desativa o fluxo, e a reativação por linha de
 comando só vale depois de reiniciar o n8n.
 
+### Reimportar sem perder as credenciais
+
+Há duas maneiras de trocar o workflow, e só uma preserva o vínculo:
+
+    # PRESERVA — exporta o que está rodando, altera, devolve
+    n8n export:workflow --all --output=/tmp/w.json
+    # edite /tmp/w.json
+    n8n import:workflow --input=/tmp/w.json
+
+    # PERDE — o JSON do repositório traz ids de credencial que não existem
+    Import from URL / Import from File
+
+O `import:workflow` também desativa o fluxo; reativar por linha de comando
+exige `n8n update:workflow --id=<id> --active=true` seguido de reinício do
+container.
+
 ### Cuidado com o modo Expression
 
 Campo cujo valor começa com `=` é tratado como expressão pelo n8n. Uma chave
 de API colada num campo em modo Expression vira `=sk-ant-...`, o n8n tenta
 avaliar aquilo como código e manda o resultado para a API. O erro que aparece
 é de autenticação, e a chave está perfeita — o problema é o `=`.
-
-### Não mexa no campo Model
-
-A lista de modelos desta versão do n8n é anterior ao Claude 5, então o valor
-vai como expressão (`=claude-sonnet-5`). Escolher pelo dropdown troca por um
-modelo antigo. Se precisar mudar, edite a expressão.
 
 ## O prompt
 

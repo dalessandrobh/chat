@@ -13,7 +13,7 @@
 
 services:
   n8n:
-    image: docker.n8n.io/n8nio/n8n:1.123.75
+    image: docker.n8n.io/n8nio/n8n:2.37.4
     container_name: chat-n8n
     restart: unless-stopped
     environment:
@@ -56,8 +56,6 @@ services:
       # --- Ponte com o painel Chat ---
       # O n8n nunca fala direto com a Meta: chama a API do painel, que
       # centraliza envio, log e a regra da janela de 24h.
-      CHAT_API_URL: ${CHAT_API_URL}
-      CHAT_SERVICE_TOKEN: ${CHAT_SERVICE_TOKEN}
     volumes:
       - n8n-data:/home/node/.n8n
     depends_on:
