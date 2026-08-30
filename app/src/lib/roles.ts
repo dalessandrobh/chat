@@ -39,3 +39,6 @@ export const canManageUsers = (role?: string | null) => role === "admin";
 export const canManageChannels = (role?: string | null) => role === "admin";
 export const canManageTemplates = (role?: string | null) =>
   role === "admin" || role === "manager";
+/** A base é o que o agente diz ao cliente. Mesma régua dos templates. */
+export const canManageKnowledge = (role?: string | null) =>
+  role === "admin" || role === "manager";

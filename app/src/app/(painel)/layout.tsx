@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
-import { canManageUsers, roleLabel } from "@/lib/roles";
+import { canManageKnowledge, canManageUsers, roleLabel } from "@/lib/roles";
 
 export default async function PainelLayout({
   children,
@@ -51,6 +51,11 @@ export default async function PainelLayout({
           <Link href="/templates" className="hover:underline">
             Templates
           </Link>
+          {canManageKnowledge(agent.role) && (
+            <Link href="/base" className="hover:underline">
+              Base
+            </Link>
+          )}
           <Link href="/canais" className="hover:underline">
             Canais
           </Link>

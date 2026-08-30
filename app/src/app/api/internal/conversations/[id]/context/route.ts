@@ -46,6 +46,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
   }
 
+  // A base vai junto do contexto de propósito: o workflow já faz esta
+  // chamada, então a base chega ao agente sem mexer no desenho do fluxo.
+  const { data: base } = await db.rpc("render_knowledge");
+
   const { data: messages } = await db
     .from("messages")
     .select("direction, author, type, body, created_at")
@@ -66,6 +70,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   return NextResponse.json({
     conversationId: conversation.id,
+    /** Base de conhecimento ativa, já montada. Vazia enquanto ninguém ligar
+     *  nenhuma seção — e aí o agente segue só com as regras do prompt. */
+    base: (base as string | null) ?? "",
     /** O workflow checa isto antes de responder: em `human` ele não fala. */
     mode: conversation.mode,
     status: conversation.status,

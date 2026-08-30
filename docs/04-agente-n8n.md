@@ -135,3 +135,48 @@ Clique em **Devolver ao bot** no painel primeiro.
 
 Se algo falhar, o rastro está em **Executions** no n8n, nó a nó, com o que
 entrou e o que saiu.
+
+---
+
+# Base de conhecimento
+
+Painel → **Base**. Seções de texto que vão inteiras no prompt a cada mensagem.
+
+## Ligada x desligada
+
+Seção desligada não é lida. É o botão que separa rascunho de verdade: escreva
+à vontade, e ligue só quando tiver conferido — o agente trata o que estiver
+ligado como fato, sem hesitação.
+
+Seção nova nasce desligada de propósito.
+
+## A regra de preço se ajusta sozinha
+
+O prompt diz: **informe preço, prazo, pagamento e disponibilidade apenas se
+estiver escrito na base, exatamente como está; não estando, escale.**
+
+Então não há dois passos a coordenar. Enquanto a seção *Preços* estiver
+desligada, o agente continua escalando toda pergunta de valor. No dia em que
+você preencher e ligar, ele passa a responder — com o seu número, não com um
+inventado. Nada a mudar no prompt.
+
+O que não muda nunca: ele não estima, não arredonda e não diz "em torno de".
+
+## Sem embeddings, de propósito
+
+A base vai inteira, sem busca vetorial. Uma empresa cabe em poucos milhares de
+tokens, e mandar tudo elimina o pior modo de falha de RAG: a busca não trazer
+o trecho certo, em silêncio, e o agente responder com confiança pelo que
+sobrou.
+
+Também evita um fornecedor a mais — a Anthropic não tem API de embeddings.
+
+A tela mostra quantos caracteres chegam ao agente. Acima de ~12.000 ela avisa:
+aí sim vale conversar sobre busca vetorial, e `chat.knowledge` já é a tabela
+certa para virar índice.
+
+## Conferir o que ele recebe
+
+Botão **Ver o que o agente recebe**. O texto vem de `chat.render_knowledge()`,
+a mesma função que alimenta o prompt — a tela não monta a sua própria versão,
+justamente para as duas não divergirem sem ninguém notar.
