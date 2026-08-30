@@ -32,6 +32,17 @@ devolve a conversa inteira do banco — painel, celular e bot na mesma linha do
 tempo. As 40 últimas mensagens, o bastante para o assunto atual sem inflar o
 prompt.
 
+## Versão mínima do n8n
+
+**1.123.75 ou mais recente.** O nó do Claude é um invólucro do LangChain, e as
+versões antigas mandavam `top_p: -1` em toda chamada. Nenhum modelo Claude
+atual aceita parâmetro de amostragem — a resposta é `400 top_p is deprecated
+for this model`, e não há como desligar isso pelo workflow. A partir da 1.123
+esses campos nascem indefinidos e somem do JSON.
+
+Pelo mesmo motivo o nó `Claude` não tem `temperature` nem `topP` configurados.
+Não adicione: qualquer um dos dois derruba a chamada.
+
 ## Antes de importar
 
 Você precisa de uma **chave da API da Anthropic** (console.anthropic.com →
@@ -56,6 +67,25 @@ autentica as chamadas que o n8n faz de volta.
 
 Depois **Active** no canto superior direito. Workflow inativo não atende.
 
+### Importar apaga as credenciais
+
+Tanto o "Import from URL" quanto o `n8n import:workflow` descartam o vínculo
+das credenciais: os nós voltam sem nenhuma. Depois de qualquer reimportação,
+percorra os sete nós que precisam de credencial — `Mensagem recebida`,
+`Buscar contexto`, `Responder`, `Avisar que não leio áudio`,
+`Escalar (mídia)`, `escalar_para_humano` e `Claude` — e selecione de novo.
+O sintoma, quando falta, é `Credentials not found` no nó `escalar_para_humano`.
+
+O `import:workflow` também desativa o fluxo, e a reativação por linha de
+comando só vale depois de reiniciar o n8n.
+
+### Cuidado com o modo Expression
+
+Campo cujo valor começa com `=` é tratado como expressão pelo n8n. Uma chave
+de API colada num campo em modo Expression vira `=sk-ant-...`, o n8n tenta
+avaliar aquilo como código e manda o resultado para a API. O erro que aparece
+é de autenticação, e a chave está perfeita — o problema é o `=`.
+
 ### Não mexa no campo Model
 
 A lista de modelos desta versão do n8n é anterior ao Claude 5, então o valor
@@ -77,6 +107,16 @@ quando o assunto sai do genérico.
 
 A Fase 4 troca essa restrição por uma base de conhecimento: aí ele responde
 preço porque leu o seu, não porque inventou.
+
+## A despedida sai pela ferramenta, não pelo agente
+
+`escalar_para_humano` manda a mensagem de despedida **antes** de trocar o modo
+para `human`, e é por isso que ela mora no endpoint e não no fluxo.
+
+Se o agente escalasse primeiro e falasse depois, a fala esbarraria na própria
+trava de handoff: o modo já seria `human`, `/api/internal/send` devolveria 409
+e o cliente ficaria sem resposta nenhuma — escalado em silêncio. O texto está
+no `jsonBody` do nó da ferramenta, e é lá que se edita.
 
 ## Testar
 

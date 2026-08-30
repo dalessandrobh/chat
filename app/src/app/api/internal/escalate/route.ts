@@ -12,10 +12,19 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { hasServiceToken } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { sendTextMessage } from "@/lib/messages";
 
 const bodySchema = z.object({
   conversationId: z.string().uuid(),
   reason: z.string().max(500).optional(),
+  /**
+   * Última fala do bot, entregue ANTES de a conversa virar humana.
+   *
+   * Sem isto o cliente fica no vácuo: o bot escala, o modo vira `human`, e a
+   * despedida que ele tentaria mandar depois esbarra na própria trava de
+   * handoff e volta 409. A ordem importa, então o envio mora aqui dentro.
+   */
+  message: z.string().max(1000).optional(),
 });
 
 export async function POST(request: Request) {
@@ -29,7 +38,7 @@ export async function POST(request: Request) {
   }
 
   const db = supabaseAdmin();
-  const { conversationId, reason } = parsed.data;
+  const { conversationId, reason, message } = parsed.data;
 
   const { data: before } = await db
     .from("conversations")
@@ -44,6 +53,20 @@ export async function POST(request: Request) {
   // Já está com humano: nada a fazer, e não vale poluir a auditoria.
   if (before.mode === "human") {
     return NextResponse.json({ ok: true, alreadyHuman: true });
+  }
+
+  // Falar primeiro, transferir depois. Se o envio falhar, a transferência
+  // acontece do mesmo jeito: é pior deixar a conversa presa no bot do que
+  // deixá-la sem a mensagem de despedida.
+  if (message) {
+    const enviada = await sendTextMessage({
+      conversationId,
+      text: message,
+      author: "bot",
+    });
+    if (!enviada.ok) {
+      console.error(`[escalate] despedida não enviada: ${enviada.message}`);
+    }
   }
 
   const { error } = await db

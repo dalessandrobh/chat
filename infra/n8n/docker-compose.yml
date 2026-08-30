@@ -13,7 +13,7 @@
 
 services:
   n8n:
-    image: docker.n8n.io/n8nio/n8n:1.72.1
+    image: docker.n8n.io/n8nio/n8n:1.123.75
     container_name: chat-n8n
     restart: unless-stopped
     environment:
@@ -50,7 +50,7 @@ services:
       # Poda execuções antigas: sem isso o banco cresce sem limite.
       EXECUTIONS_DATA_PRUNE: "true"
       EXECUTIONS_DATA_MAX_AGE: "336"          # 14 dias, em horas
-      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: all
       EXECUTIONS_DATA_SAVE_ON_ERROR: all
 
       # --- Ponte com o painel Chat ---

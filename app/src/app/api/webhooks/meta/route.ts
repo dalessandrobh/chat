@@ -175,7 +175,7 @@ async function forwardToN8n(conversationId: string, event: InboundMessage) {
   if (!serverEnv.n8nWebhookUrl) return;
 
   try {
-    await fetch(serverEnv.n8nWebhookUrl, {
+    const response = await fetch(serverEnv.n8nWebhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -193,6 +193,16 @@ async function forwardToN8n(conversationId: string, event: InboundMessage) {
       }),
       signal: AbortSignal.timeout(10_000),
     });
+
+    // Sem isto, credencial errada no n8n vira silêncio absoluto: o webhook
+    // devolve 200, a mensagem fica gravada, e ninguém responde ao cliente.
+    // Foi exatamente assim que um 403 passou despercebido.
+    if (!response.ok) {
+      console.error(
+        `[webhook] n8n recusou o encaminhamento: HTTP ${response.status} — ` +
+          (await response.text().catch(() => "")).slice(0, 200)
+      );
+    }
   } catch (err) {
     console.error("[webhook] n8n indisponível", err);
   }

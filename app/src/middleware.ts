@@ -69,7 +69,12 @@ export const config = {
      *     container falha para sempre;
      *   - as demais rotas fazem sua própria checagem e devolvem 401 em
      *     JSON, o que um redirect 302 para /login quebraria.
+     *
+     * Arquivo em /public também fica de fora: o middleware o mandaria para
+     * /login, e um .json ou .png redirecionado não é um arquivo — é uma
+     * página HTML com o content-type errado. Daí a exclusão de qualquer
+     * caminho com extensão.
      */
-    "/((?!_next/static|_next/image|favicon.ico|api/).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/|.*\\.).*)",
   ],
 };
