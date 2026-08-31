@@ -85,7 +85,7 @@ async function handleInboundMessage(event: EvoInboundMessage) {
   // 2. Canal pela instância
   const { data: channel } = await db
     .from("channels")
-    .select("id")
+    .select("id, is_active")
     .eq("instance_name", event.instanceName)
     .maybeSingle();
 
@@ -160,14 +160,18 @@ async function handleInboundMessage(event: EvoInboundMessage) {
     return;
   }
 
-  // 5. Bot só é acionado em modo bot.
+  // 5. Bot só é acionado em modo bot, e só se o canal não estiver pausado.
+  //
+  // A mensagem continua sendo gravada e aparecendo no painel: pausar um
+  // número cala o robô, não esconde o cliente. Quem estiver no painel
+  // responde na mão como sempre.
   const { data: conversation } = await db
     .from("conversations")
     .select("id, mode")
     .eq("id", conversationId)
     .maybeSingle();
 
-  if (conversation?.mode === "bot") {
+  if (conversation?.mode === "bot" && channel.is_active) {
     // Texto entra na janela; mídia não espera. Ver lib/bot-queue.ts.
     if (event.type === "text") {
       void enfileirarTurno(turnoDoBot(conversation.id, event));

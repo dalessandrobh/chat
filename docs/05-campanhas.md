@@ -97,13 +97,15 @@ principal.
 Quem decide *quem* e *quando* é o banco, em `chat.claim_next_send()`:
 
 1. promove `scheduled → running` quando a hora chega;
-2. pula campanha fora da janela de horário ou do dia da semana
+2. pula campanha cujo canal está **pausado** na tela de Canais — pausar um
+   número cala tudo que sai dele sozinho, campanha inclusive;
+3. pula campanha fora da janela de horário ou do dia da semana
    (`America/Sao_Paulo`);
-3. pula campanha que já bateu o teto do dia;
-4. sorteia o intervalo e compara com o último envio **do canal** — não da
+4. pula campanha que já bateu o teto do dia;
+5. sorteia o intervalo e compara com o último envio **do canal** — não da
    campanha: duas campanhas no mesmo número dobrariam a cadência, e é o número
    que é banido;
-5. reserva um destinatário com `for update ... skip locked`.
+6. reserva um destinatário com `for update ... skip locked`.
 
 As travas estão no banco de propósito. Elas precisam valer para qualquer coisa
 que dispare, inclusive um script rodado na mão às três da manhã.

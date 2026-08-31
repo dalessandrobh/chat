@@ -39,19 +39,53 @@ export function CanaisClient({
   initial: Channel[];
   canManage: boolean;
 }) {
+  const [channels, setChannels] = useState(initial);
+  const [criando, setCriando] = useState(false);
+
+  function substituir(channel: Channel) {
+    setChannels((prev) => prev.map((c) => (c.id === channel.id ? channel : c)));
+  }
+
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <h1 className="text-xl font-semibold">Canais</h1>
-      <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
-        Os números de WhatsApp que este painel atende.
-      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Canais</h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
+            Os números de WhatsApp que este painel atende.
+          </p>
+        </div>
+
+        {canManage && (
+          <button
+            onClick={() => setCriando((v) => !v)}
+            className="ml-auto rounded-lg bg-wa-teal px-3 py-1.5 text-sm font-medium text-white"
+          >
+            {criando ? "Fechar" : "Novo número"}
+          </button>
+        )}
+      </div>
+
+      {criando && (
+        <NovoCanal
+          onCriado={(channel) => {
+            setChannels((prev) => [...prev, channel]);
+            setCriando(false);
+          }}
+        />
+      )}
 
       <div className="mt-6 space-y-4">
-        {initial.map((channel) => (
-          <ChannelCard key={channel.id} channel={channel} canManage={canManage} />
+        {channels.map((channel) => (
+          <ChannelCard
+            key={channel.id}
+            channel={channel}
+            canManage={canManage}
+            onChanged={substituir}
+          />
         ))}
 
-        {initial.length === 0 && (
+        {channels.length === 0 && (
           <p
             className="rounded-lg border p-6 text-center text-sm"
             style={{ borderColor: "var(--border)", color: "var(--muted)" }}
@@ -66,7 +100,79 @@ export function CanaisClient({
 
 // -----------------------------------------------------------------------------
 
-function ChannelCard({ channel, canManage }: { channel: Channel; canManage: boolean }) {
+/**
+ * Cadastrar cria a instância na Evolution já apontando o webhook para cá. O
+ * pareamento fica para depois, no cartão: quem cadastra nem sempre é quem
+ * está com o celular na mão.
+ */
+function NovoCanal({ onCriado }: { onCriado: (channel: Channel) => void }) {
+  const [nome, setNome] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function criar() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nome }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error);
+      onCriado(json.channel);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="mt-4 rounded-lg border p-4"
+      style={{ background: "var(--panel)", borderColor: "var(--border)" }}
+    >
+      <label className="text-sm font-medium">Nome do canal</label>
+      <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
+        Como a equipe vai reconhecê-lo na lista — “Vendas”, “Pós-venda”. O
+        número aparece sozinho depois do pareamento.
+      </p>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <input
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          placeholder="Vendas"
+          className="min-w-0 flex-1 rounded-lg border px-3 py-1.5 text-sm"
+          style={{ background: "var(--bg)", borderColor: "var(--border)" }}
+        />
+        <button
+          onClick={() => void criar()}
+          disabled={busy || nome.trim().length < 2}
+          className="rounded-lg bg-wa-teal px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {busy ? "Criando…" : "Criar"}
+        </button>
+      </div>
+
+      {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+
+function ChannelCard({
+  channel,
+  canManage,
+  onChanged,
+}: {
+  channel: Channel;
+  canManage: boolean;
+  onChanged: (channel: Channel) => void;
+}) {
   const [state, setState] = useState(channel.connection_state);
   const [qrcode, setQrcode] = useState<string | null>(null);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
@@ -107,6 +213,53 @@ function ChannelCard({ channel, canManage }: { channel: Channel; canManage: bool
     }
   }
 
+  async function patch(body: Record<string, unknown>) {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/channels/${channel.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error);
+      onChanged(json.channel);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function trocarNumero() {
+    if (
+      !confirm(
+        `Desconectar o número de "${channel.name}"?\n\n` +
+          "As conversas, os contatos e as campanhas continuam neste canal — " +
+          "só o aparelho muda. Até parear o novo número, nada entra nem sai."
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/channels/${channel.id}/logout`, { method: "POST" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error);
+      setState("close");
+      setQrcode(null);
+      setPairingCode(null);
+      onChanged({ ...channel, connection_state: "close", display_phone_number: null });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // Enquanto há QR na tela, perguntamos de 3 em 3s se já leram.
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
@@ -132,22 +285,58 @@ function ChannelCard({ channel, canManage }: { channel: Channel; canManage: bool
         <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${label.className}`}>
           {label.text}
         </span>
+        {!channel.is_active && (
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            Pausado
+          </span>
+        )}
         <span className="text-xs" style={{ color: "var(--muted)" }}>
           {isEvolution ? `Evolution · ${channel.instance_name}` : "Meta Cloud API"}
           {channel.display_phone_number && ` · ${channel.display_phone_number}`}
         </span>
 
-        {isEvolution && canManage && (
-          <button
-            onClick={state === "open" ? checkState : connect}
-            disabled={busy}
-            className="ml-auto rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50"
-            style={{ borderColor: "var(--border)" }}
-          >
-            {busy ? "Gerando…" : state === "open" ? "Verificar" : "Conectar com QR"}
-          </button>
+        {canManage && (
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button
+              onClick={() => void patch({ isActive: !channel.is_active })}
+              disabled={busy}
+              className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50"
+              style={{ borderColor: "var(--border)" }}
+            >
+              {channel.is_active ? "Pausar" : "Retomar"}
+            </button>
+
+            {isEvolution && (
+              <>
+                <button
+                  onClick={() => void trocarNumero()}
+                  disabled={busy}
+                  className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50"
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  Trocar número
+                </button>
+                <button
+                  onClick={state === "open" ? checkState : connect}
+                  disabled={busy}
+                  className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50"
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  {busy ? "…" : state === "open" ? "Verificar" : "Conectar com QR"}
+                </button>
+              </>
+            )}
+          </div>
         )}
       </div>
+
+      {!channel.is_active && (
+        <p className="mt-3 text-sm" style={{ color: "var(--muted)" }}>
+          Pausado: o bot não responde e as campanhas não disparam por este
+          número. As mensagens continuam chegando ao painel e podem ser
+          respondidas na mão.
+        </p>
+      )}
 
       {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
 

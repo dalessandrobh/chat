@@ -98,3 +98,33 @@ inbox (view)      a lista pronta do painel, sem N+1
   timeout; a barreira contra duplicata é do banco, não do código.
 - **Template órfão vira `DISABLED`, não é apagado.** Mensagens antigas
   referenciam o template usado; apagar quebraria o histórico.
+
+## Canais: cadastrar, trocar o número, pausar
+
+A tela **Canais** faz as três operações, todas restritas a administrador.
+
+**Novo número** cria a instância na Evolution já com o webhook apontado para
+`http://chat-app:3000/api/webhooks/evolution` — endereço da rede interna do
+Docker, sem passar pela internet — e grava a linha em `chat.channels`. O
+pareamento é um segundo passo, no cartão: quem cadastra nem sempre é quem está
+com o celular na mão. Se a Evolution recusar a criação, a linha recém-gravada é
+apagada; instância órfã ocuparia o nome para sempre, e nome de instância é
+único.
+
+**Trocar número** desconecta o aparelho e mantém o canal. Conversas, contatos,
+campanhas e templates continuam apontando para a mesma linha, e o próximo QR
+pareia outro celular no lugar. É essa a diferença para cadastrar um canal novo:
+trocar mantém a história, cadastrar começa do zero.
+
+**Pausar** cala o que sai sozinho — o bot não responde e as campanhas não
+disparam por aquele número. A mensagem continua sendo gravada e aparecendo no
+painel, e quem estiver lá responde na mão: pausar tira o robô do ar, não o
+cliente.
+
+A trava vive em dois lugares, e é de propósito: no webhook, para o bot, e
+dentro de `chat.claim_next_send()`, para as campanhas. As campanhas disparam
+pelo banco e precisam parar mesmo que alguém rode um script na mão.
+
+> `chat.channels.is_active` existia desde o primeiro dia e não era lido por
+> ninguém. Dava para desligar um número no banco e ele continuar atendendo e
+> disparando.

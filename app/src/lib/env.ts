@@ -73,6 +73,15 @@ export const serverEnv = {
     get webhookToken() {
       return required("EVOLUTION_WEBHOOK_TOKEN");
     },
+    /**
+     * Para onde a Evolution manda os eventos de um canal novo. É endereço da
+     * rede interna do Docker: o webhook não passa pela internet, então não
+     * depende de DNS nem de certificado.
+     */
+    webhookTarget: optional(
+      "EVOLUTION_WEBHOOK_TARGET",
+      "http://chat-app:3000/api/webhooks/evolution"
+    ),
   },
 
   /** Quais provedores estão configurados. Usado para telas e diagnóstico. */

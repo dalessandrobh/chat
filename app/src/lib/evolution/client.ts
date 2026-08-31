@@ -310,6 +310,17 @@ export function logoutInstance(instance: string): Promise<unknown> {
   return evoFetch(`/instance/logout/${encodeURIComponent(instance)}`, { method: "DELETE" });
 }
 
+/**
+ * Apaga a instância inteira, sessão e histórico da Evolution junto.
+ *
+ * Usado só para desfazer uma criação que não chegou ao fim — deixar a
+ * instância órfã na Evolution ocuparia o nome para sempre, e nome de
+ * instância é único.
+ */
+export function deleteInstance(instance: string): Promise<unknown> {
+  return evoFetch(`/instance/delete/${encodeURIComponent(instance)}`, { method: "DELETE" });
+}
+
 /** Eventos que nos interessam. Assinar tudo só enche o log. */
 export const WEBHOOK_EVENTS = [
   "MESSAGES_UPSERT",
