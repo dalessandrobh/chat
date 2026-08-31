@@ -185,16 +185,16 @@ async function handleInboundMessage(event: EvoInboundMessage) {
  * uma foto viraria duas mensagens.
  */
 async function tratarMidia(conversationId: string, event: EvoInboundMessage) {
-  const texto = await entenderMidia(event);
+  const leitura = await entenderMidia(event);
 
-  if (texto) {
+  if (leitura.ok) {
     const db = supabaseAdmin();
     const icone = event.type === "audio" ? "🎤" : "📷";
 
     // O corpo é o que o agente lê na transcrição e o que aparece no painel.
     await db
       .from("messages")
-      .update({ body: texto })
+      .update({ body: leitura.texto })
       .eq("wa_message_id", event.waMessageId)
       .eq("conversation_id", conversationId);
 
@@ -202,13 +202,62 @@ async function tratarMidia(conversationId: string, event: EvoInboundMessage) {
     // Imagem"), e ele não roda de novo por causa deste update.
     await db
       .from("conversations")
-      .update({ last_message_preview: `${icone} ${texto}`.slice(0, 120) })
+      .update({ last_message_preview: `${icone} ${leitura.texto}`.slice(0, 120) })
       .eq("id", conversationId);
+
+    await enviarTurno(turnoDoBot(conversationId, { ...event, body: leitura.texto }));
+    return;
+  }
+
+  // Leitura desligada no painel é escolha de quem opera, não falha: explica e
+  // pergunta, em vez de gastar um atendente com toda foto que chega.
+  if (leitura.motivo === "desligado") {
+    await ofereceAtendente(conversationId);
+    return;
   }
 
   // Sem leitura, `text` vai vazio e o fluxo do n8n avisa que não lemos e
   // chama uma pessoa — que é o que sempre aconteceu com mídia.
-  await enviarTurno(turnoDoBot(conversationId, texto ? { ...event, body: texto } : event));
+  await enviarTurno(turnoDoBot(conversationId, event));
+}
+
+const OFERTA_ATENDENTE =
+  "Não consigo abrir imagens e vídeos por aqui, só consigo ler texto. " +
+  "Quer que eu chame uma pessoa da equipe para ver esse arquivo com você?";
+
+/** Janela em que a mesma oferta não se repete. */
+const INTERVALO_OFERTA_MS = 5 * 60_000;
+
+/**
+ * A conversa continua com o bot de propósito. Se a pessoa responder que sim,
+ * o agente lê o "sim" logo abaixo da própria pergunta e chama alguém — é a
+ * ferramenta que ele já tem. Transferir agora seria decidir por ela.
+ */
+async function ofereceAtendente(conversationId: string) {
+  const desde = new Date(Date.now() - INTERVALO_OFERTA_MS).toISOString();
+
+  // Álbum chega como cinco mensagens em dois segundos, e cinco vezes a mesma
+  // frase é pior do que não responder.
+  const { data: jaOferecido } = await supabaseAdmin()
+    .from("messages")
+    .select("id")
+    .eq("conversation_id", conversationId)
+    .eq("direction", "out")
+    .eq("body", OFERTA_ATENDENTE)
+    .gte("created_at", desde)
+    .limit(1);
+
+  if (jaOferecido?.length) return;
+
+  const enviada = await sendTextMessage({
+    conversationId,
+    text: OFERTA_ATENDENTE,
+    author: "bot",
+  });
+
+  if (!enviada.ok) {
+    console.error(`[mídia] oferta de atendente não enviada: ${enviada.message}`);
+  }
 }
 
 /**

@@ -52,9 +52,14 @@ export default async function PainelLayout({
             Templates
           </Link>
           {canManageKnowledge(agent.role) && (
-            <Link href="/base" className="hover:underline">
-              Base
-            </Link>
+            <>
+              <Link href="/base" className="hover:underline">
+                Base
+              </Link>
+              <Link href="/ajustes" className="hover:underline">
+                Ajustes
+              </Link>
+            </>
           )}
           {canManageTemplates(agent.role) && (
             <>

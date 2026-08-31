@@ -150,6 +150,17 @@ painel mostra o conteúdo, e o nó `Tem texto?` deixa passar.
 de sempre. É por isso que o nó chama `Tem texto?` e não `É texto?`: o que
 importa é haver o que responder, não como chegou.
 
+**Ler imagem é uma chave no painel** (Ajustes), em `chat.settings.ler_imagens`.
+Desligada, imagem e vídeo recebem uma resposta diferente: o bot explica que não
+abre esses arquivos e **pergunta** se a pessoa quer falar com alguém — e a
+conversa **continua com o bot**. Quem responde "sim" é atendido pelo caminho
+normal, porque o agente lê o "sim" logo abaixo da própria pergunta e usa
+`escalar_para_humano`. Transferir na hora seria decidir pela pessoa, e gastar
+um atendente em cada foto é justamente o custo que a chave existe para evitar.
+
+A diferença entre desligado e não conseguir ler é de propósito: desligado é
+escolha de quem opera (pergunta), falha é exceção (vai para a fila).
+
 **No painel o texto vem rotulado** — "🎤 áudio — transcrito automaticamente".
 Sem o rótulo o atendente lê a descrição da foto como se o cliente tivesse
 escrito aquilo, e responde a uma frase que ninguém disse.

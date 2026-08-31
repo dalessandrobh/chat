@@ -16,6 +16,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { serverEnv } from "@/lib/env";
+import { lerImagensLigado } from "@/lib/ajustes";
 import { getMediaBase64 } from "@/lib/evolution/client";
 import type { EvoInboundMessage } from "@/lib/evolution/webhook";
 
@@ -35,27 +36,40 @@ Se for documento, print ou tabela, transcreva os números e nomes que aparecem.
 Descreva só o que está na imagem. Não suponha, não recomende, não venda.`;
 
 /**
- * Devolve o texto da mídia, ou null quando não deu — sem chave, formato que
- * não lemos, download falho ou erro do provedor. Null significa "trate como
- * antes": a conversa vai para uma pessoa.
+ * O motivo importa porque a resposta ao cliente muda. Desligado no painel é
+ * uma escolha de quem opera, e aí a conversa continua com o bot; não
+ * conseguir ler é uma falha, e aí ela vai para uma pessoa.
  */
-export async function entenderMidia(event: EvoInboundMessage): Promise<string | null> {
+export type LeituraMidia =
+  | { ok: true; texto: string }
+  | { ok: false; motivo: "desligado" | "nao-lemos" };
+
+export async function entenderMidia(event: EvoInboundMessage): Promise<LeituraMidia> {
   const ehImagem = event.type === "image" || event.type === "sticker";
   const ehAudio = event.type === "audio";
-  if (!ehImagem && !ehAudio) return null;
-  if (ehImagem && !serverEnv.midia.leImagem) return null;
-  if (ehAudio && !serverEnv.midia.leAudio) return null;
+  const ehVideo = event.type === "video";
+
+  // A chave do painel vale para o que é imagem e para o que nunca vai ser
+  // lido de qualquer jeito: desligada, vídeo e foto recebem a mesma resposta.
+  if (ehImagem || ehVideo) {
+    if (!(await lerImagensLigado())) return { ok: false, motivo: "desligado" };
+  }
+
+  if (!ehImagem && !ehAudio) return { ok: false, motivo: "nao-lemos" };
+  if (ehImagem && !serverEnv.midia.leImagem) return { ok: false, motivo: "nao-lemos" };
+  if (ehAudio && !serverEnv.midia.leAudio) return { ok: false, motivo: "nao-lemos" };
 
   const base64 = await baixar(event);
-  if (!base64) return null;
+  if (!base64) return { ok: false, motivo: "nao-lemos" };
 
   try {
-    return ehImagem
+    const texto = ehImagem
       ? await descreverImagem(base64, event.media?.mimeType ?? "image/jpeg")
       : await transcreverAudio(base64, event.media?.mimeType ?? "audio/ogg");
+    return texto ? { ok: true, texto } : { ok: false, motivo: "nao-lemos" };
   } catch (err) {
     console.error(`[mídia] não consegui ler ${event.type}`, err);
-    return null;
+    return { ok: false, motivo: "nao-lemos" };
   }
 }
 
