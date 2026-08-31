@@ -261,3 +261,41 @@ não estava: o que vem de fora não escolhe em nome de quem se age.
 
 Na via oficial o `phone_number_id` passou a viajar no evento de status pelo
 mesmo motivo — sem ele não havia como amarrar a confirmação a uma empresa.
+
+
+## Como uma empresa entra, e como o suporte olha
+
+### Quem chega sozinho
+
+Cadastro aberto na tela de login. Depois de confirmar o e-mail, a pessoa cai em
+`/comecar`, dá um nome à empresa e entra como administradora dela.
+
+`chat.create_company()` recusa quem já tem empresa — sem isso o cadastro viraria
+um jeito de encher o banco. E quem foi **convidado** não passa por essa tela:
+convidado já nasce com empresa e vê "acesso pendente" até o administrador
+liberar em Usuários.
+
+A ponte antiga continua no lugar: enquanto existir **uma** empresa, o gatilho
+`handle_new_user` põe o novo cadastro nela. Na segunda ele para de adivinhar.
+
+### O suporte entra por outra porta
+
+Nenhuma política de acesso ganhou um `or chat.is_platform_owner()`. Isso é
+deliberado e o teste de isolamento **afirma** que continua assim: qualquer
+política que passe a mencionar `is_platform_owner` quebra a suíte.
+
+A visão ampla vive fora da RLS:
+
+| | |
+|---|---|
+| `chat.platform_owners` | quem opera a instalação |
+| `chat.platform_overview()` | medida por empresa — só `service_role` |
+| `chat.platform_access_log` | quem olhou, o quê e quando |
+
+A tela `/plataforma` confere quem está pedindo, usa a chave de serviço de
+propósito e **registra o próprio acesso**. O que ela mostra é medida, não
+conteúdo: contagem de equipe, canais, conversas e mensagens. Ler conversa de
+cliente é outra decisão e vai precisar de outra porta.
+
+Quem não é dono da plataforma é mandado para o inbox — não descobre que a tela
+existe.

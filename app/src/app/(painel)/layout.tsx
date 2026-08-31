@@ -17,24 +17,31 @@ export default async function PainelLayout({
 
   const { data: agent } = await supabase
     .from("agents")
-    .select("full_name, email, role, is_active")
+    .select("full_name, email, role, is_active, company_id")
     .eq("id", user.id)
     .maybeSingle();
 
-  // Conta criada mas ainda não liberada por um admin.
-  if (!agent?.is_active) {
+  // Chegou sozinho e ainda não tem empresa: cria a dele em vez de esperar que
+  // alguém libere no banco. Quem foi convidado já nasce com empresa e cai no
+  // caso de baixo.
+  if (!agent?.company_id) redirect("/comecar");
+
+  // Convidado, com empresa, mas ainda não liberado.
+  if (!agent.is_active) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md text-center">
           <h1 className="text-xl font-semibold">Acesso pendente</h1>
           <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
-            Sua conta ({user.email}) ainda não foi ativada. Peça a um
-            administrador para liberar em <code>chat.agents</code>.
+            Sua conta ({user.email}) ainda não foi liberada. Peça a um
+            administrador da sua empresa para ativá-la em Usuários.
           </p>
         </div>
       </main>
     );
   }
+
+  const { data: ehDonoPlataforma } = await supabase.rpc("is_platform_owner");
 
   return (
     <div className="flex h-screen flex-col">
@@ -81,8 +88,15 @@ export default async function PainelLayout({
           )}
         </nav>
 
-        <span className="ml-auto text-xs" style={{ color: "var(--muted)" }}>
-          {agent.full_name ?? agent.email} · {roleLabel(agent.role)}
+        <span className="ml-auto flex items-center gap-3 text-xs" style={{ color: "var(--muted)" }}>
+          {ehDonoPlataforma && (
+            <Link href="/plataforma" className="hover:underline">
+              Plataforma
+            </Link>
+          )}
+          <span>
+            {agent.full_name ?? agent.email} · {roleLabel(agent.role)}
+          </span>
         </span>
       </header>
 

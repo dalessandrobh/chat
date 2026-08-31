@@ -233,6 +233,74 @@ begin
   raise notice 'ok: só o servidor lê credencial, e lê a certa';
 end $$;
 
+\echo '=== cadastro de empresa ==='
+
+-- Quem já tem empresa não cria outra: senão o cadastro vira jeito de encher
+-- o banco, e a pessoa acabaria com duas contas sem querer.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111aa","role":"authenticated"}';
+do $$
+begin
+  begin
+    perform chat.create_company('Segunda empresa do mesmo dono');
+    raise exception 'FALHOU: quem já tem empresa criou outra';
+  exception when insufficient_privilege then null;
+  end;
+  raise notice 'ok: quem já tem empresa não cria outra';
+end $$;
+reset role;
+
+-- Quem chega sozinho cria a sua e vira administrador dela.
+insert into auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
+values ('33333333-3333-3333-3333-3333333333cc','00000000-0000-0000-0000-000000000000','authenticated','authenticated','c@teste.local','x',now(),now());
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"33333333-3333-3333-3333-3333333333cc","role":"authenticated"}';
+do $$
+declare v_id uuid;
+begin
+  if chat.current_company() is not null then
+    raise exception 'FALHOU: recém-cadastrado já nasceu com empresa';
+  end if;
+
+  v_id := chat.create_company('Empresa Fantasma C');
+
+  if (select company_id from chat.agents where id = auth.uid()) <> v_id then
+    raise exception 'FALHOU: a empresa criada não ficou com quem criou';
+  end if;
+  if (select role::text from chat.agents where id = auth.uid()) <> 'admin' then
+    raise exception 'FALHOU: quem criou a empresa não virou administrador';
+  end if;
+  if exists (select 1 from chat.messages) then
+    raise exception 'FALHOU: empresa nova enxerga mensagem de outra';
+  end if;
+
+  raise notice 'ok: quem chega sozinho cria a própria empresa e não vê as outras';
+end $$;
+reset role;
+
+\echo '=== acesso de plataforma não vaza pela RLS ==='
+
+do $$
+begin
+  -- A visão ampla existe, mas não pelo navegador: é chave de serviço, por uma
+  -- porta separada e registrada.
+  if has_function_privilege('authenticated', 'chat.platform_overview()', 'execute') then
+    raise exception 'FALHOU: o navegador pode listar todas as empresas';
+  end if;
+
+  -- E nenhuma política tem exceção para dono de plataforma.
+  if exists (
+    select 1 from pg_policy p
+     where pg_get_expr(p.polqual, p.polrelid) like '%is_platform_owner%'
+        or pg_get_expr(p.polwithcheck, p.polrelid) like '%is_platform_owner%'
+  ) then
+    raise exception 'FALHOU: alguma política ganhou exceção de plataforma';
+  end if;
+
+  raise notice 'ok: plataforma é porta separada, não exceção na regra';
+end $$;
+
 \echo '=== desconhecido logado não vê nada ==='
 
 set local role authenticated;
