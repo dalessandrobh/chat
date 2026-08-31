@@ -101,7 +101,7 @@ export async function POST(
           await handleInboundMessage(event);
           break;
         case "status":
-          await handleStatusUpdate(event);
+          await handleStatusUpdate(event, credenciais.companyId);
           break;
         case "connection":
           await handleConnectionUpdate(event);
@@ -233,7 +233,7 @@ async function handleInboundMessage(event: EvoInboundMessage) {
     if (event.type === "text") {
       void enfileirarTurno(turnoDoBot(conversation.id, event));
     } else {
-      void tratarMidia(conversation.id, channel.id, event);
+      void tratarMidia(conversation.id, channel.id, channel.company_id, event);
     }
   }
 }
@@ -248,6 +248,7 @@ async function handleInboundMessage(event: EvoInboundMessage) {
 async function tratarMidia(
   conversationId: string,
   channelId: string,
+  companyId: string,
   event: EvoInboundMessage
 ) {
   const leitura = await entenderMidia(event, channelId);
@@ -261,7 +262,8 @@ async function tratarMidia(
       .from("messages")
       .update({ body: leitura.texto })
       .eq("wa_message_id", event.waMessageId)
-      .eq("conversation_id", conversationId);
+      .eq("conversation_id", conversationId)
+      .eq("company_id", companyId);
 
     // O gatilho do banco já montou o preview com a mensagem vazia ("📷
     // Imagem"), e ele não roda de novo por causa deste update.
@@ -365,14 +367,23 @@ const STATUS_TIMESTAMP_COLUMN = {
   read: "read_at",
 } as const;
 
-async function handleStatusUpdate(event: EvoStatusUpdate) {
+/**
+ * O id da mensagem vem do provedor, e provedor é coisa da empresa: com cada
+ * uma podendo rodar a própria Evolution, um servidor comprometido mandaria o
+ * id de outra empresa e mexeria na linha dela. A empresa entra na cláusula.
+ */
+async function handleStatusUpdate(event: EvoStatusUpdate, companyId: string) {
   const patch: Record<string, unknown> = { status: event.status };
 
   const column = STATUS_TIMESTAMP_COLUMN[event.status as keyof typeof STATUS_TIMESTAMP_COLUMN];
   if (column) patch[column] = event.timestamp.toISOString();
 
   const db = supabaseAdmin();
-  await db.from("messages").update(patch).eq("wa_message_id", event.waMessageId);
+  await db
+    .from("messages")
+    .update(patch)
+    .eq("wa_message_id", event.waMessageId)
+    .eq("company_id", companyId);
 
   // A mesma confirmação resolve o destinatário da campanha. É por existir este
   // retorno que o painel não precisa de um status "inconclusivo": todo envio
@@ -385,7 +396,8 @@ async function handleStatusUpdate(event: EvoStatusUpdate) {
   await db
     .from("campaign_recipients")
     .update(destino)
-    .eq("wa_message_id", event.waMessageId);
+    .eq("wa_message_id", event.waMessageId)
+    .eq("company_id", companyId);
 }
 
 // -----------------------------------------------------------------------------

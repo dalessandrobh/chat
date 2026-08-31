@@ -78,6 +78,8 @@ export interface InboundMessage {
 
 export interface StatusUpdate {
   kind: "status";
+  /** De qual número veio a confirmação — é o que amarra o evento a uma empresa. */
+  phoneNumberId: string | null;
   waMessageId: string;
   status: "sent" | "delivered" | "read" | "failed";
   timestamp: Date;
@@ -196,6 +198,7 @@ export function parseWebhook(payload: WebhookPayload): WebhookEvent[] {
       for (const status of value.statuses ?? []) {
         events.push({
           kind: "status",
+          phoneNumberId: value.metadata?.phone_number_id ?? null,
           waMessageId: status.id,
           status: status.status,
           timestamp: new Date(Number(status.timestamp) * 1000),

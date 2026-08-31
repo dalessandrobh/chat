@@ -223,6 +223,17 @@ const STATUS_TIMESTAMP_COLUMN = {
 async function handleStatusUpdate(event: StatusUpdate) {
   const db = supabaseAdmin();
 
+  // A empresa vem do número que confirmou, não do id da mensagem: id de
+  // provedor é dado de fora, e sozinho alcançaria a linha de outra empresa.
+  const { data: channel } = await db
+    .from("channels")
+    .select("company_id")
+    .eq("phone_number_id", event.phoneNumberId ?? "")
+    .maybeSingle();
+
+  if (!channel) return;
+  const companyId = channel.company_id as string;
+
   const patch: Record<string, unknown> = { status: event.status };
 
   const column = STATUS_TIMESTAMP_COLUMN[event.status as keyof typeof STATUS_TIMESTAMP_COLUMN];
@@ -231,7 +242,13 @@ async function handleStatusUpdate(event: StatusUpdate) {
 
   // Sem .single(): status pode chegar para mensagem que não é nossa
   // (ex.: enviada por outra ferramenta na mesma WABA).
-  await db.from("messages").update(patch).eq("wa_message_id", event.waMessageId);
+  // Mesmo cuidado da Evolution: o id vem do provedor, e a empresa entra na
+  // cláusula para o status de uma nunca alcançar a linha de outra.
+  await db
+    .from("messages")
+    .update(patch)
+    .eq("wa_message_id", event.waMessageId)
+    .eq("company_id", companyId);
 }
 
 // -----------------------------------------------------------------------------

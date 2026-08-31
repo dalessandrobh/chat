@@ -239,3 +239,25 @@ O cliente da Meta continua lendo o token do ambiente. Não há canal da via
 oficial hoje, e enviar por um sem credencial própria falha com erro explícito
 em vez de usar a conta da plataforma calado. Some quando o cliente da Meta
 receber a credencial do canal, como o da Evolution já recebe.
+
+
+## Id de provedor não identifica empresa
+
+Confirmação de entrega chega com o id da mensagem no provedor, e é por ele que
+a linha era encontrada:
+
+```
+update messages set status = 'read' where wa_message_id = <veio de fora>
+```
+
+Com uma Evolution só, da plataforma, isso era inofensivo. Depois da Fase 4 cada
+empresa pode trazer o próprio servidor — e um servidor comprometido mandaria o
+id de outra empresa e mexeria na linha dela. O evento é autenticado por canal,
+mas o **conteúdo** dele não é confiável.
+
+As quatro atualizações desse tipo passaram a levar a empresa junto, derivada do
+canal que mandou o evento. É a mesma regra da Fase 3, aplicada onde ela ainda
+não estava: o que vem de fora não escolhe em nome de quem se age.
+
+Na via oficial o `phone_number_id` passou a viajar no evento de status pelo
+mesmo motivo — sem ele não havia como amarrar a confirmação a uma empresa.
