@@ -39,7 +39,9 @@ export function InboxClient({
     async (conversationId: string) => {
       const { data } = await supabase
         .from("messages")
-        .select("*")
+        // O nome vem junto: sem ele toda resposta da equipe aparece como
+        // "você", inclusive a que outra pessoa mandou ontem.
+        .select("*, agent:agents(full_name)")
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true })
         .limit(300);
@@ -71,9 +73,16 @@ export function InboxClient({
           // Só anexa se for da conversa aberta; a lista é recarregada de
           // qualquer forma para atualizar preview e contador.
           if (message.conversation_id === selectedId) {
-            setMessages((prev) =>
-              prev.some((m) => m.id === message.id) ? prev : [...prev, message]
-            );
+            if (message.agent_id) {
+              // O payload do realtime não traz o join com agents. Anexar cru
+              // faria a resposta de um atendente aparecer sem nome até o
+              // próximo recarregamento — piscando na tela de quem assiste.
+              void loadMessages(selectedId);
+            } else {
+              setMessages((prev) =>
+                prev.some((m) => m.id === message.id) ? prev : [...prev, message]
+              );
+            }
           }
           void loadRows();
         }
@@ -84,7 +93,9 @@ export function InboxClient({
         (payload) => {
           const updated = payload.new as Message;
           setMessages((prev) =>
-            prev.map((m) => (m.id === updated.id ? updated : m))
+            // Mesma história: o payload não traz o join, e uma simples
+            // confirmação de entrega apagaria o nome de quem respondeu.
+            prev.map((m) => (m.id === updated.id ? { ...updated, agent: m.agent } : m))
           );
         }
       )
@@ -98,7 +109,7 @@ export function InboxClient({
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [supabase, selectedId, loadRows]);
+  }, [supabase, selectedId, loadRows, loadMessages]);
 
   // --- Derivados --------------------------------------------------------
 
@@ -134,7 +145,7 @@ export function InboxClient({
         {selected ? (
           <>
             <HandoffBar row={selected} onChanged={refresh} />
-            <MessageThread messages={messages} />
+            <MessageThread messages={messages} contactName={selected.contact_name} />
             <Composer row={selected} templates={templates} onSent={refresh} />
           </>
         ) : (

@@ -41,6 +41,8 @@ export interface Message {
   error: Record<string, unknown> | null;
   author: MessageAuthor;
   agent_id: string | null;
+  /** Nome de quem respondeu, quando foi um atendente pelo painel. */
+  agent: { full_name: string | null } | null;
   template_id: string | null;
   created_at: string;
 }

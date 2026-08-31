@@ -11,16 +11,33 @@ const STATUS_ICON: Record<string, string> = {
   failed: "⚠",
 };
 
-/** Rótulo de origem da mensagem — deixa claro se foi bot ou pessoa. */
-function AuthorTag({ message }: { message: Message }) {
-  if (message.direction === "in") return null;
+/**
+ * Quem falou.
+ *
+ * Antes o lado de fora não tinha nome nenhum e o de dentro dizia sempre
+ * "você" — inclusive na resposta que outra pessoa da equipe mandou ontem.
+ * Numa conversa que passa de mão em mão, saber quem disse o quê é metade da
+ * leitura.
+ */
+function quemFalou(message: Message, contactName: string): string {
+  if (message.direction === "in") return contactName;
 
-  const label =
-    message.author === "bot" ? "bot" : message.author === "system" ? "sistema" : "você";
+  switch (message.author) {
+    case "bot":
+      return "bot";
+    case "system":
+      return "sistema";
+    default:
+      // Atendente sem agent_id é o dono respondendo pelo próprio aparelho: a
+      // mensagem chega pelo webhook da Evolution, não pelo painel.
+      return message.agent?.full_name ?? "pelo celular";
+  }
+}
 
+function AuthorTag({ message, contactName }: { message: Message; contactName: string }) {
   return (
     <span className="text-[10px] font-medium uppercase tracking-wide opacity-60">
-      {label}
+      {quemFalou(message, contactName)}
       {message.type === "template" && " · template"}
     </span>
   );
@@ -49,7 +66,7 @@ function rotuloMidia(message: Message) {
     : `${icone} ${tipo} — descrição automática`;
 }
 
-function Bubble({ message }: { message: Message }) {
+function Bubble({ message, contactName }: { message: Message; contactName: string }) {
   const incoming = message.direction === "in";
   const failed = message.status === "failed";
 
@@ -64,7 +81,7 @@ function Bubble({ message }: { message: Message }) {
               : "rounded-tr-sm bg-wa-bubble dark:bg-[#005c4b]"
         }`}
       >
-        <AuthorTag message={message} />
+        <AuthorTag message={message} contactName={contactName} />
 
         {message.media ? (
           <>
@@ -103,7 +120,13 @@ function Bubble({ message }: { message: Message }) {
   );
 }
 
-export function MessageThread({ messages }: { messages: Message[] }) {
+export function MessageThread({
+  messages,
+  contactName,
+}: {
+  messages: Message[];
+  contactName: string;
+}) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Rola para o fim quando chega mensagem nova.
@@ -114,7 +137,7 @@ export function MessageThread({ messages }: { messages: Message[] }) {
   return (
     <div className="thread-bg flex-1 space-y-2 overflow-y-auto p-4">
       {messages.map((message) => (
-        <Bubble key={message.id} message={message} />
+        <Bubble key={message.id} message={message} contactName={contactName} />
       ))}
       <div ref={bottomRef} />
     </div>
