@@ -36,40 +36,44 @@ Se for documento, print ou tabela, transcreva os números e nomes que aparecem.
 Descreva só o que está na imagem. Não suponha, não recomende, não venda.`;
 
 /**
- * O motivo importa porque a resposta ao cliente muda. Desligado no painel é
- * uma escolha de quem opera, e aí a conversa continua com o bot; não
- * conseguir ler é uma falha, e aí ela vai para uma pessoa.
+ * Não devolve só o texto: devolve o que fazer quando não há texto.
+ *
+ * `perguntar` é para o que sabidamente não vamos ler — vídeo sempre, imagem
+ * quando a chave do painel está desligada. Aí o bot explica e pergunta se a
+ * pessoa quer alguém, em vez de gastar um atendente com todo arquivo que
+ * chega. `escalar` é para a falha: tentamos ler e não deu, e falha não se
+ * resolve perguntando.
  */
 export type LeituraMidia =
   | { ok: true; texto: string }
-  | { ok: false; motivo: "desligado" | "nao-lemos" };
+  | { ok: false; acao: "perguntar"; leImagens: boolean }
+  | { ok: false; acao: "escalar" };
 
 export async function entenderMidia(event: EvoInboundMessage): Promise<LeituraMidia> {
   const ehImagem = event.type === "image" || event.type === "sticker";
   const ehAudio = event.type === "audio";
   const ehVideo = event.type === "video";
 
-  // A chave do painel vale para o que é imagem e para o que nunca vai ser
-  // lido de qualquer jeito: desligada, vídeo e foto recebem a mesma resposta.
-  if (ehImagem || ehVideo) {
-    if (!(await lerImagensLigado())) return { ok: false, motivo: "desligado" };
-  }
+  const leImagens = (ehImagem || ehVideo) && serverEnv.midia.leImagem && (await lerImagensLigado());
 
-  if (!ehImagem && !ehAudio) return { ok: false, motivo: "nao-lemos" };
-  if (ehImagem && !serverEnv.midia.leImagem) return { ok: false, motivo: "nao-lemos" };
-  if (ehAudio && !serverEnv.midia.leAudio) return { ok: false, motivo: "nao-lemos" };
+  // Vídeo nunca é lido, com a chave ligada ou não — então sempre pergunta.
+  if (ehVideo) return { ok: false, acao: "perguntar", leImagens };
+  if (ehImagem && !leImagens) return { ok: false, acao: "perguntar", leImagens };
+
+  if (!ehImagem && !ehAudio) return { ok: false, acao: "escalar" };
+  if (ehAudio && !serverEnv.midia.leAudio) return { ok: false, acao: "escalar" };
 
   const base64 = await baixar(event);
-  if (!base64) return { ok: false, motivo: "nao-lemos" };
+  if (!base64) return { ok: false, acao: "escalar" };
 
   try {
     const texto = ehImagem
       ? await descreverImagem(base64, event.media?.mimeType ?? "image/jpeg")
       : await transcreverAudio(base64, event.media?.mimeType ?? "audio/ogg");
-    return texto ? { ok: true, texto } : { ok: false, motivo: "nao-lemos" };
+    return texto ? { ok: true, texto } : { ok: false, acao: "escalar" };
   } catch (err) {
     console.error(`[mídia] não consegui ler ${event.type}`, err);
-    return { ok: false, motivo: "nao-lemos" };
+    return { ok: false, acao: "escalar" };
   }
 }
 

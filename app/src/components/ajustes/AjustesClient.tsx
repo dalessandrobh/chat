@@ -86,16 +86,23 @@ export function AjustesClient() {
                 uma consulta ao modelo.
               </p>
               <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
-                Desligado, imagem e vídeo recebem esta resposta, e a conversa
-                continua com o bot até a pessoa dizer o que quer:
+                Desligado, a imagem recebe a mesma resposta que o vídeo. Em
+                qualquer um dos dois casos a conversa <strong>continua com o
+                bot</strong> até a pessoa dizer o que quer — quem responde que
+                sim é transferido na hora.
+              </p>
+              <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
+                <strong>Vídeo pergunta sempre</strong>, ligado ou desligado:
+                vídeo não é lido em nenhum dos dois casos. É esta a frase que
+                sai agora:
               </p>
               <p
                 className="mt-2 rounded-lg px-3 py-2 text-sm italic"
                 style={{ background: "var(--bg)", color: "var(--muted)" }}
               >
-                “Não consigo abrir imagens e vídeos por aqui, só consigo ler
-                texto. Quer que eu chame uma pessoa da equipe para ver esse
-                arquivo com você?”
+                {ajustes.lerImagens && ajustes.temChaveImagem
+                  ? "“Não consigo abrir vídeos por aqui, só consigo ler texto e imagem. Quer que eu chame uma pessoa da equipe para ver esse arquivo com você?”"
+                  : "“Não consigo abrir imagens e vídeos por aqui, só consigo ler texto. Quer que eu chame uma pessoa da equipe para ver esse arquivo com você?”"}
               </p>
             </div>
 

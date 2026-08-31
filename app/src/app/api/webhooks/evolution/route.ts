@@ -209,10 +209,10 @@ async function tratarMidia(conversationId: string, event: EvoInboundMessage) {
     return;
   }
 
-  // Leitura desligada no painel é escolha de quem opera, não falha: explica e
-  // pergunta, em vez de gastar um atendente com toda foto que chega.
-  if (leitura.motivo === "desligado") {
-    await ofereceAtendente(conversationId);
+  // O que sabidamente não vamos ler não é falha: explica e pergunta, em vez de
+  // gastar um atendente com todo arquivo que chega.
+  if (leitura.acao === "perguntar") {
+    await ofereceAtendente(conversationId, leitura.leImagens);
     return;
   }
 
@@ -221,9 +221,14 @@ async function tratarMidia(conversationId: string, event: EvoInboundMessage) {
   await enviarTurno(turnoDoBot(conversationId, event));
 }
 
-const OFERTA_ATENDENTE =
-  "Não consigo abrir imagens e vídeos por aqui, só consigo ler texto. " +
-  "Quer que eu chame uma pessoa da equipe para ver esse arquivo com você?";
+const PERGUNTA = "Quer que eu chame uma pessoa da equipe para ver esse arquivo com você?";
+
+const OFERTA_ATENDENTE = {
+  /** O painel lê imagem: dizer que não leio seria mentira para quem acabou de
+   *  ter uma foto respondida duas mensagens acima. */
+  soVideo: `Não consigo abrir vídeos por aqui, só consigo ler texto e imagem. ${PERGUNTA}`,
+  nenhuma: `Não consigo abrir imagens e vídeos por aqui, só consigo ler texto. ${PERGUNTA}`,
+};
 
 /** Janela em que a mesma oferta não se repete. */
 const INTERVALO_OFERTA_MS = 5 * 60_000;
@@ -233,7 +238,8 @@ const INTERVALO_OFERTA_MS = 5 * 60_000;
  * o agente lê o "sim" logo abaixo da própria pergunta e chama alguém — é a
  * ferramenta que ele já tem. Transferir agora seria decidir por ela.
  */
-async function ofereceAtendente(conversationId: string) {
+async function ofereceAtendente(conversationId: string, leImagens: boolean) {
+  const texto = leImagens ? OFERTA_ATENDENTE.soVideo : OFERTA_ATENDENTE.nenhuma;
   const desde = new Date(Date.now() - INTERVALO_OFERTA_MS).toISOString();
 
   // Álbum chega como cinco mensagens em dois segundos, e cinco vezes a mesma
@@ -243,17 +249,13 @@ async function ofereceAtendente(conversationId: string) {
     .select("id")
     .eq("conversation_id", conversationId)
     .eq("direction", "out")
-    .eq("body", OFERTA_ATENDENTE)
+    .eq("body", texto)
     .gte("created_at", desde)
     .limit(1);
 
   if (jaOferecido?.length) return;
 
-  const enviada = await sendTextMessage({
-    conversationId,
-    text: OFERTA_ATENDENTE,
-    author: "bot",
-  });
+  const enviada = await sendTextMessage({ conversationId, text: texto, author: "bot" });
 
   if (!enviada.ok) {
     console.error(`[mídia] oferta de atendente não enviada: ${enviada.message}`);
