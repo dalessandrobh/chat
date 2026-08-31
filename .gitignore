@@ -5,3 +5,9 @@ node_modules/
 *.tsbuildinfo
 next-env.d.ts
 .credenciais-*
+
+# Dumps e backups são artefato de operação, não código. Chegaram a ficar
+# versionados e levavam o CHAT_SERVICE_TOKEN em texto claro junto.
+infra/n8n/backup/
+*.sql.gz
+*.dump
