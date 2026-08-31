@@ -12,6 +12,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { currentAgent, unauthorized } from "@/lib/auth";
 import { canManageChannels } from "@/lib/roles";
 import { EvolutionApiError, logoutInstance } from "@/lib/evolution/client";
+import { conexaoDoCanal } from "@/lib/canais";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const agent = await currentAgent();
@@ -40,7 +41,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   }
 
   try {
-    await logoutInstance(channel.instance_name);
+    await logoutInstance(await conexaoDoCanal(channel.id), channel.instance_name);
   } catch (err) {
     // Já deslogado devolve erro, e isso não é motivo para deixar o banco
     // dizendo que o número antigo continua lá.

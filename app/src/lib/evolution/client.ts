@@ -11,7 +11,7 @@
  * que cai. Metade do tratamento de erro daqui é sobre isso.
  */
 
-import { serverEnv } from "@/lib/env";
+import type { ConexaoEvolution } from "@/lib/canais";
 
 export class EvolutionApiError extends Error {
   readonly status: number;
@@ -83,11 +83,15 @@ function extractMessage(details: Record<string, unknown> | null): string | null 
   return null;
 }
 
-async function evoFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${serverEnv.evolution.baseUrl}${path}`, {
+async function evoFetch<T>(
+  conn: ConexaoEvolution,
+  path: string,
+  init: RequestInit = {}
+): Promise<T> {
+  const response = await fetch(`${conn.baseUrl}${path}`, {
     ...init,
     headers: {
-      apikey: serverEnv.evolution.apiKey,
+      apikey: conn.apiKey,
       "Content-Type": "application/json",
       ...(init.headers ?? {}),
     },
@@ -159,13 +163,13 @@ function quotedPayload(quotedId?: string) {
   return quotedId ? { quoted: { key: { id: quotedId }, message: {} } } : {};
 }
 
-export function sendText(
+export function sendText(conn: ConexaoEvolution,
   instance: string,
   to: string,
   text: string,
   opts: SendOptions = {}
 ): Promise<EvolutionSendResult> {
-  return evoFetch<EvolutionSendResult>(`/message/sendText/${encodeURIComponent(instance)}`, {
+  return evoFetch<EvolutionSendResult>(conn, `/message/sendText/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: JSON.stringify({
       number: to,
@@ -179,7 +183,7 @@ export function sendText(
 
 export type EvolutionMediaType = "image" | "document" | "video" | "audio";
 
-export function sendMedia(
+export function sendMedia(conn: ConexaoEvolution,
   instance: string,
   to: string,
   media: {
@@ -192,7 +196,7 @@ export function sendMedia(
   },
   opts: SendOptions = {}
 ): Promise<EvolutionSendResult> {
-  return evoFetch<EvolutionSendResult>(`/message/sendMedia/${encodeURIComponent(instance)}`, {
+  return evoFetch<EvolutionSendResult>(conn, `/message/sendMedia/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: JSON.stringify({
       number: to,
@@ -207,13 +211,14 @@ export function sendMedia(
  * Áudio como mensagem de voz (aquele balãozinho), não como arquivo anexado.
  * Endpoint separado no Baileys porque o encoding é outro.
  */
-export function sendWhatsAppAudio(
+export function sendWhatsAppAudio(conn: ConexaoEvolution,
   instance: string,
   to: string,
   audio: string,
   opts: SendOptions = {}
 ): Promise<EvolutionSendResult> {
   return evoFetch<EvolutionSendResult>(
+    conn,
     `/message/sendWhatsAppAudio/${encodeURIComponent(instance)}`,
     {
       method: "POST",
@@ -223,23 +228,23 @@ export function sendWhatsAppAudio(
 }
 
 /** Marca como lida no celular do dono, para o WhatsApp Web não ficar sujo. */
-export function markAsRead(
+export function markAsRead(conn: ConexaoEvolution,
   instance: string,
   messages: Array<{ remoteJid: string; fromMe: boolean; id: string }>
 ): Promise<unknown> {
-  return evoFetch(`/chat/markMessageAsRead/${encodeURIComponent(instance)}`, {
+  return evoFetch(conn, `/chat/markMessageAsRead/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: JSON.stringify({ readMessages: messages }),
   });
 }
 
 /** Baixa a mídia de uma mensagem recebida, já decriptada, em base64. */
-export function getMediaBase64(
+export function getMediaBase64(conn: ConexaoEvolution,
   instance: string,
   messageId: string,
   convertToMp4 = false
 ): Promise<{ mediaType: string; fileName: string; base64: string; mimetype: string }> {
-  return evoFetch(`/chat/getBase64FromMediaMessage/${encodeURIComponent(instance)}`, {
+  return evoFetch(conn, `/chat/getBase64FromMediaMessage/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: JSON.stringify({ message: { key: { id: messageId } }, convertToMp4 }),
   });
@@ -263,13 +268,14 @@ export interface InstanceState {
   instance: { instanceName: string; state: "open" | "connecting" | "close" };
 }
 
-export function createInstance(input: {
+export function createInstance(conn: ConexaoEvolution,
+  input: {
   instanceName: string;
   webhookUrl: string;
   webhookToken: string;
   events?: string[];
 }): Promise<Record<string, unknown>> {
-  return evoFetch("/instance/create", {
+  return evoFetch(conn, "/instance/create", {
     method: "POST",
     body: JSON.stringify({
       instanceName: input.instanceName,
@@ -281,8 +287,9 @@ export function createInstance(input: {
 }
 
 /** Devolve o QR. Chamar de novo gera outro: o QR expira em ~40s. */
-export function connectInstance(instance: string): Promise<InstanceConnectResult> {
-  return evoFetch(`/instance/connect/${encodeURIComponent(instance)}`);
+export function connectInstance(conn: ConexaoEvolution,
+  instance: string): Promise<InstanceConnectResult> {
+  return evoFetch(conn, `/instance/connect/${encodeURIComponent(instance)}`);
 }
 
 export interface InstanceInfo {
@@ -298,16 +305,18 @@ export interface InstanceInfo {
  * Lista as instâncias. É o único endpoint que devolve o número pareado —
  * connectionState só diz se está de pé.
  */
-export function fetchInstances(): Promise<InstanceInfo[]> {
-  return evoFetch<InstanceInfo[]>("/instance/fetchInstances");
+export function fetchInstances(conn: ConexaoEvolution): Promise<InstanceInfo[]> {
+  return evoFetch<InstanceInfo[]>(conn, "/instance/fetchInstances");
 }
 
-export function connectionState(instance: string): Promise<InstanceState> {
-  return evoFetch(`/instance/connectionState/${encodeURIComponent(instance)}`);
+export function connectionState(conn: ConexaoEvolution,
+  instance: string): Promise<InstanceState> {
+  return evoFetch(conn, `/instance/connectionState/${encodeURIComponent(instance)}`);
 }
 
-export function logoutInstance(instance: string): Promise<unknown> {
-  return evoFetch(`/instance/logout/${encodeURIComponent(instance)}`, { method: "DELETE" });
+export function logoutInstance(conn: ConexaoEvolution,
+  instance: string): Promise<unknown> {
+  return evoFetch(conn, `/instance/logout/${encodeURIComponent(instance)}`, { method: "DELETE" });
 }
 
 /**
@@ -317,8 +326,9 @@ export function logoutInstance(instance: string): Promise<unknown> {
  * instância órfã na Evolution ocuparia o nome para sempre, e nome de
  * instância é único.
  */
-export function deleteInstance(instance: string): Promise<unknown> {
-  return evoFetch(`/instance/delete/${encodeURIComponent(instance)}`, { method: "DELETE" });
+export function deleteInstance(conn: ConexaoEvolution,
+  instance: string): Promise<unknown> {
+  return evoFetch(conn, `/instance/delete/${encodeURIComponent(instance)}`, { method: "DELETE" });
 }
 
 /** Eventos que nos interessam. Assinar tudo só enche o log. */
@@ -345,18 +355,19 @@ function webhookConfig(url: string, token: string, events?: string[]) {
   };
 }
 
-export function setWebhook(
+export function setWebhook(conn: ConexaoEvolution,
   instance: string,
   url: string,
   token: string,
   events?: string[]
 ): Promise<unknown> {
-  return evoFetch(`/webhook/set/${encodeURIComponent(instance)}`, {
+  return evoFetch(conn, `/webhook/set/${encodeURIComponent(instance)}`, {
     method: "POST",
     body: JSON.stringify({ webhook: webhookConfig(url, token, events) }),
   });
 }
 
-export function findWebhook(instance: string): Promise<Record<string, unknown>> {
-  return evoFetch(`/webhook/find/${encodeURIComponent(instance)}`);
+export function findWebhook(conn: ConexaoEvolution,
+  instance: string): Promise<Record<string, unknown>> {
+  return evoFetch(conn, `/webhook/find/${encodeURIComponent(instance)}`);
 }

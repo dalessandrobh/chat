@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { currentAgent, unauthorized } from "@/lib/auth";
 import { EvolutionApiError, connectInstance } from "@/lib/evolution/client";
+import { conexaoDoCanal } from "@/lib/canais";
 import { canManageChannels } from "@/lib/roles";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -42,7 +43,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   }
 
   try {
-    const result = await connectInstance(channel.instance_name);
+    const result = await connectInstance(await conexaoDoCanal(channel.id), channel.instance_name);
     return NextResponse.json({
       qrcode: result.base64 ?? null,
       pairingCode: result.pairingCode ?? null,

@@ -7,6 +7,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { currentAgent, unauthorized } from "@/lib/auth";
@@ -16,6 +17,15 @@ import { serverEnv } from "@/lib/env";
 
 const bodySchema = z.object({
   name: z.string().trim().min(2, "Dê um nome ao canal").max(60),
+  /**
+   * Servidor próprio da empresa, quando houver. Em branco usa o da
+   * plataforma — e o valor é **copiado** para a linha do canal, não
+   * consultado no ambiente na hora de enviar. A diferença importa: no dia em
+   * que o padrão mudar, o canal antigo continua falando com o servidor onde a
+   * sessão dele existe.
+   */
+  baseUrl: z.string().trim().url().optional(),
+  apiKey: z.string().trim().min(8).optional(),
 });
 
 /** Nome de instância é único e vive numa URL: sem acento, sem espaço. */
@@ -64,6 +74,13 @@ export async function POST(request: Request) {
 
   // A linha primeiro: se a Evolution recusar, apagar uma linha recém-criada é
   // trivial; instância órfã ocupa o nome para sempre.
+  const baseUrl = (parsed.data.baseUrl ?? serverEnv.evolution.baseUrl).replace(/\/+$/, "");
+  const apiKey = parsed.data.apiKey ?? serverEnv.evolution.apiKey;
+
+  // Token próprio deste canal. Um por canal significa que vazar o de uma
+  // empresa não autoriza mandar evento falso no inbox de outra.
+  const webhookToken = randomBytes(32).toString("hex");
+
   const { data: channel, error } = await db
     .from("channels")
     .insert({
@@ -73,6 +90,7 @@ export async function POST(request: Request) {
       is_active: true,
       connection_state: "close",
       company_id: agent.company_id,
+      base_url: baseUrl,
     })
     .select("id, name, provider, instance_name, display_phone_number, connection_state, connected_at, is_active")
     .single();
@@ -80,11 +98,27 @@ export async function POST(request: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   try {
-    await createInstance({
-      instanceName,
-      webhookUrl: serverEnv.evolution.webhookTarget,
-      webhookToken: serverEnv.evolution.webhookToken,
+    await db.rpc("set_channel_secret", {
+      p_channel_id: channel.id,
+      p_name: "api_key",
+      p_value: apiKey,
     });
+    await db.rpc("set_channel_secret", {
+      p_channel_id: channel.id,
+      p_name: "webhook_token",
+      p_value: webhookToken,
+    });
+
+    await createInstance(
+      { baseUrl, apiKey },
+      {
+        instanceName,
+        // A URL carrega o canal: é assim que o webhook sabe de quem é o evento
+        // antes de conferir o token, e cada canal confere o seu.
+        webhookUrl: `${serverEnv.evolution.webhookTarget}/${channel.id}`,
+        webhookToken,
+      }
+    );
   } catch (err) {
     await db.from("channels").delete().eq("id", channel.id);
     const message = err instanceof EvolutionApiError ? err.message : String(err);

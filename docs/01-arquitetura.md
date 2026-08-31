@@ -185,3 +185,57 @@ transação e para no primeiro `FALHOU`.
 
 Vale rodar depois de qualquer mudança em política, view ou função
 `security definer`.
+
+
+## Credencial por canal
+
+Endereço e chave da Evolution — e o token do webhook — moravam em variável de
+ambiente do servidor: uma empresa, cravada no processo. Agora moram na linha do
+canal.
+
+O valor não fica na coluna. Fica no cofre do Postgres (`supabase_vault`), e a
+coluna `channels.secrets` guarda só o mapa `nome → id`. Um `pg_dump` leva o
+texto cifrado; a chave do cofre não está no dump.
+
+```
+chat.set_channel_secret(canal, nome, valor)   grava — só admin da empresa dona
+chat.channel_credentials(canal)               lê tudo decifrado — só service_role
+chat.channel_secret_names(canal)              o que está preenchido — para a tela
+```
+
+`channel_credentials` **não é concedida a `authenticated`**. O painel sabe
+quais credenciais existem, nunca o que são: não há caminho que devolva uma
+credencial para o navegador, nem para o administrador que a digitou.
+
+### Não existe queda para o ambiente
+
+Canal sem credencial falha com erro claro. A alternativa — cair no valor do
+ambiente — mandaria a mensagem da empresa B pelo número da empresa A sem
+ninguém notar.
+
+O ambiente ainda tem `EVOLUTION_BASE_URL` e `EVOLUTION_API_KEY`, e eles são
+usados **uma vez**: quando um canal é criado sem servidor próprio, o valor é
+copiado para a linha dele. Depois disso o canal é autossuficiente. No dia em
+que o padrão mudar, o canal antigo continua falando com o servidor onde a
+sessão dele existe.
+
+### O webhook carrega o canal na URL
+
+```
+/api/webhooks/evolution/<id-do-canal>
+```
+
+É assim que se sabe de quem é o evento **antes** de conferir o token — e cada
+canal confere o seu. Medido: token do canal A na URL do canal B devolve 401.
+
+O caminho sem id continua aceito para instâncias antigas; ali o canal é
+descoberto pelo nome da instância no corpo, e o token conferido é o daquele
+canal do mesmo jeito. **Em nenhum dos dois caminhos existe token global** — o
+antigo `EVOLUTION_WEBHOOK_TOKEN` não autoriza mais nada.
+
+### O que ainda falta
+
+O cliente da Meta continua lendo o token do ambiente. Não há canal da via
+oficial hoje, e enviar por um sem credencial própria falha com erro explícito
+em vez de usar a conta da plataforma calado. Some quando o cliente da Meta
+receber a credencial do canal, como o da Evolution já recebe.

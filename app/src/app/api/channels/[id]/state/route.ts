@@ -16,6 +16,7 @@ import {
   fetchInstances,
   jidToWaId,
 } from "@/lib/evolution/client";
+import { conexaoDoCanal } from "@/lib/canais";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const agent = await currentAgent();
@@ -39,7 +40,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   try {
-    const result = await connectionState(channel.instance_name);
+    const conn = await conexaoDoCanal(channel.id);
+    const result = await connectionState(conn, channel.instance_name);
     const state = result.instance?.state ?? "unknown";
 
     const patch: Record<string, unknown> = {};
@@ -53,7 +55,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     // Qual número foi pareado só se descobre depois da leitura do QR, e só
     // fetchInstances conta. Buscamos uma vez e guardamos.
     if (state === "open" && !channel.display_phone_number) {
-      const instances = await fetchInstances().catch(() => []);
+      const instances = await fetchInstances(conn).catch(() => []);
       const found = instances.find(
         (i) => (i.name ?? i.instanceName) === channel.instance_name
       );

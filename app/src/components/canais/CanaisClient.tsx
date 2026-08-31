@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface Channel {
   id: string;
+  base_url: string | null;
   name: string;
   provider: "meta_cloud" | "evolution";
   instance_name: string | null;
@@ -164,6 +165,174 @@ function NovoCanal({ onCriado }: { onCriado: (channel: Channel) => void }) {
 
 // -----------------------------------------------------------------------------
 
+/** Nome técnico → o que o administrador reconhece. */
+const ROTULO_CREDENCIAL: Record<string, string> = {
+  api_key: "Chave da API da Evolution",
+  webhook_token: "Token do webhook",
+  access_token: "Token de acesso da Meta",
+  app_secret: "App secret da Meta",
+  verify_token: "Token de verificação da Meta",
+};
+
+/**
+ * O valor entra e não volta. A tela mostra "definida" ou "vazia" — não existe
+ * caminho no painel que leia uma credencial de volta, nem para o administrador
+ * que a digitou. Quem precisa do valor é o servidor na hora de enviar.
+ */
+function Credenciais({ channel }: { channel: Channel }) {
+  const [definidas, setDefinidas] = useState<string[] | null>(null);
+  const [nome, setNome] = useState<string>("api_key");
+  const [valor, setValor] = useState("");
+  const [endereco, setEndereco] = useState(channel.base_url ?? "");
+  const [busy, setBusy] = useState(false);
+  const [aviso, setAviso] = useState<{ kind: "ok" | "erro"; text: string } | null>(null);
+
+  const nomes =
+    channel.provider === "evolution"
+      ? ["api_key", "webhook_token"]
+      : ["access_token", "app_secret", "verify_token"];
+
+  const refresh = useCallback(async () => {
+    const r = await fetch(`/api/channels/${channel.id}/secrets`);
+    const j = await r.json();
+    if (r.ok) setDefinidas(j.definidas);
+    else setAviso({ kind: "erro", text: j.error });
+  }, [channel.id]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  async function gravar() {
+    setBusy(true);
+    setAviso(null);
+    const r = await fetch(`/api/channels/${channel.id}/secrets`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: nome, value: valor }),
+    });
+    const j = await r.json();
+    setBusy(false);
+    if (!r.ok) return setAviso({ kind: "erro", text: j.error });
+    setValor("");
+    setAviso({ kind: "ok", text: `${ROTULO_CREDENCIAL[nome]} guardada.` });
+    await refresh();
+  }
+
+  async function salvarEndereco() {
+    setBusy(true);
+    setAviso(null);
+    const r = await fetch(`/api/channels/${channel.id}/secrets`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ baseUrl: endereco }),
+    });
+    const j = await r.json();
+    setBusy(false);
+    setAviso(r.ok ? { kind: "ok", text: "Endereço salvo." } : { kind: "erro", text: j.error });
+  }
+
+  return (
+    <div
+      className="mt-4 rounded-lg border p-4"
+      style={{ background: "var(--bg)", borderColor: "var(--border)" }}
+    >
+      <p className="text-sm font-medium">Credenciais deste canal</p>
+      <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
+        Ficam cifradas no cofre do banco e não voltam para a tela — nem para
+        você. Trocar é gravar por cima.
+      </p>
+
+      {channel.provider === "evolution" && (
+        <div className="mt-3">
+          <label className="text-xs" style={{ color: "var(--muted)" }}>
+            Endereço do servidor
+          </label>
+          <div className="mt-1 flex flex-wrap gap-2">
+            <input
+              value={endereco}
+              onChange={(e) => setEndereco(e.target.value)}
+              placeholder="http://api-evolution:8080"
+              className="min-w-0 flex-1 rounded-lg border px-3 py-1.5 font-mono text-xs"
+              style={{ background: "var(--panel)", borderColor: "var(--border)" }}
+            />
+            <button
+              onClick={() => void salvarEndereco()}
+              disabled={busy || !endereco}
+              className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50"
+              style={{ borderColor: "var(--border)" }}
+            >
+              Salvar
+            </button>
+          </div>
+        </div>
+      )}
+
+      <ul className="mt-3 space-y-1">
+        {nomes.map((n) => (
+          <li key={n} className="flex items-center gap-2 text-sm">
+            <span
+              className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                definidas?.includes(n)
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                  : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+              }`}
+            >
+              {definidas?.includes(n) ? "definida" : "vazia"}
+            </span>
+            <span>{ROTULO_CREDENCIAL[n]}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <select
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          className="rounded-lg border px-2 py-1.5 text-sm"
+          style={{ background: "var(--panel)", borderColor: "var(--border)" }}
+        >
+          {nomes.map((n) => (
+            <option key={n} value={n}>
+              {ROTULO_CREDENCIAL[n]}
+            </option>
+          ))}
+        </select>
+        <input
+          type="password"
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          placeholder="cole o valor"
+          autoComplete="off"
+          className="min-w-0 flex-1 rounded-lg border px-3 py-1.5 font-mono text-xs"
+          style={{ background: "var(--panel)", borderColor: "var(--border)" }}
+        />
+        <button
+          onClick={() => void gravar()}
+          disabled={busy || valor.trim().length < 8}
+          className="rounded-lg bg-wa-teal px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        >
+          Guardar
+        </button>
+      </div>
+
+      {aviso && (
+        <p
+          className={`mt-3 text-sm ${
+            aviso.kind === "ok"
+              ? "text-emerald-700 dark:text-emerald-300"
+              : "text-red-600 dark:text-red-400"
+          }`}
+        >
+          {aviso.text}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+
 function ChannelCard({
   channel,
   canManage,
@@ -179,6 +348,7 @@ function ChannelCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
+  const [vendoCredenciais, setVendoCredenciais] = useState(false);
 
   const isEvolution = channel.provider === "evolution";
   const label = STATE_LABEL[state] ?? STATE_LABEL.unknown;
@@ -309,6 +479,14 @@ function ChannelCard({
             {isEvolution && (
               <>
                 <button
+                  onClick={() => setVendoCredenciais((v) => !v)}
+                  disabled={busy}
+                  className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50"
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  Credenciais
+                </button>
+                <button
                   onClick={() => void trocarNumero()}
                   disabled={busy}
                   className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50"
@@ -339,6 +517,8 @@ function ChannelCard({
       )}
 
       {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+      {vendoCredenciais && <Credenciais channel={channel} />}
 
       {state === "close" && !qrcode && (
         <p className="mt-3 text-sm" style={{ color: "var(--muted)" }}>

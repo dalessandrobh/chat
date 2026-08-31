@@ -13,19 +13,28 @@
  */
 
 import { timingSafeEqual } from "node:crypto";
-import { serverEnv } from "@/lib/env";
 import { isBroadcastJid, isGroupJid, jidToWaId } from "@/lib/evolution/client";
 
 // -----------------------------------------------------------------------------
 // Autenticação
 // -----------------------------------------------------------------------------
 
-/** Compara em tempo constante para não vazar o token por timing. */
-export function verifyWebhookToken(authorizationHeader: string | null): boolean {
+/**
+ * Compara em tempo constante para não vazar o token por timing.
+ *
+ * O esperado vem do canal, não do ambiente: um token por canal significa que
+ * vazar o de uma empresa não autoriza injetar mensagem falsa no inbox de
+ * outra.
+ */
+export function verifyWebhookToken(
+  authorizationHeader: string | null,
+  expectedToken: string | undefined
+): boolean {
   if (!authorizationHeader?.startsWith("Bearer ")) return false;
+  if (!expectedToken) return false;
 
   const received = Buffer.from(authorizationHeader.slice("Bearer ".length));
-  const expected = Buffer.from(serverEnv.evolution.webhookToken);
+  const expected = Buffer.from(expectedToken);
 
   if (received.length !== expected.length || expected.length === 0) return false;
   return timingSafeEqual(received, expected);

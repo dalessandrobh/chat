@@ -13,6 +13,7 @@
  */
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { conexaoDoCanal, credenciaisDoCanal } from "@/lib/canais";
 import {
   MetaApiError,
   buildTemplateComponents,
@@ -100,14 +101,34 @@ async function dispatchText(
   replyTo?: string
 ): Promise<string | null> {
   if (providerOf(conversation) === "evolution") {
-    const result = await evoSendText(instanceOf(conversation), to, text, {
+    const conn = await conexaoDoCanal(conversation.channel_id);
+    const result = await evoSendText(conn, instanceOf(conversation), to, text, {
       quotedId: replyTo,
     });
     return result.key?.id ?? null;
   }
 
+  await exigirCredencialMeta(conversation);
   const result = await sendText(to, text, { replyTo });
   return result.messages?.[0]?.id ?? null;
+}
+
+/**
+ * A via oficial ainda lê o token da Meta do ambiente — uma conta, do dono da
+ * plataforma. Enquanto for assim, um canal meta_cloud de outra empresa
+ * mandaria pelo número errado, e é melhor falhar do que fazer isso calado.
+ *
+ * Cai fora no dia em que o cliente da Meta receber a credencial do canal,
+ * como o da Evolution já recebe.
+ */
+async function exigirCredencialMeta(conversation: ConversationRow): Promise<void> {
+  const cred = await credenciaisDoCanal(conversation.channel_id);
+  if (!cred.access_token) {
+    throw new Error(
+      `Canal ${conversation.channel_id} é da API oficial e ainda não tem token próprio. ` +
+        "Preencha em Canais → Credenciais antes de enviar por ele."
+    );
+  }
 }
 
 /** Os nomes de tipo de mídia não coincidem entre os dois provedores. */
@@ -130,7 +151,8 @@ async function dispatchMedia(
     if (!media) {
       throw new Error("Canal evolution exige `link` (URL pública) ou base64 na mídia.");
     }
-    const result = await evoSendMedia(instanceOf(conversation), to, {
+    const conn = await conexaoDoCanal(conversation.channel_id);
+    const result = await evoSendMedia(conn, instanceOf(conversation), to, {
       mediatype: EVOLUTION_MEDIA_TYPE[input.kind] ?? "document",
       media,
       caption: input.caption,

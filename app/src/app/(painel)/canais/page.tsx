@@ -15,7 +15,7 @@ export default async function CanaisPage() {
     supabase
       .from("channels")
       .select(
-        "id, name, provider, instance_name, display_phone_number, connection_state, connected_at, is_active"
+        "id, name, provider, instance_name, display_phone_number, connection_state, connected_at, is_active, base_url"
       )
       .order("created_at", { ascending: true }),
     supabase.from("agents").select("role").eq("id", user!.id).maybeSingle(),

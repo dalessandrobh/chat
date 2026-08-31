@@ -16,9 +16,11 @@ import { sendTextMessage } from "@/lib/messages";
 import { CONFIRMACAO_SAIDA, pediuParaSair } from "@/lib/opt-out";
 import { enfileirarTurno, enviarTurno, turnoDoBot } from "@/lib/bot-queue";
 import { entenderMidia } from "@/lib/midia";
+import { credenciaisDoCanal } from "@/lib/canais";
 import {
   parseWebhook,
   verifyWebhookToken,
+  type EvolutionEnvelope,
   type EvoConnectionUpdate,
   type EvoInboundMessage,
   type EvoStatusUpdate,
@@ -27,14 +29,66 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(request: Request) {
-  if (!verifyWebhookToken(request.headers.get("authorization"))) {
+/**
+ * O caminho carrega o canal: /api/webhooks/evolution/<id-do-canal>.
+ *
+ * É assim que se sabe de quem é o evento **antes** de conferir o token — e
+ * cada canal confere o seu. Um token por canal significa que vazar o de uma
+ * empresa não autoriza injetar mensagem falsa no inbox de outra.
+ *
+ * O caminho sem id continua aceito para as instâncias antigas, que ainda
+ * apontam para lá. Nesse caso o canal é descoberto pelo nome da instância no
+ * corpo, e o token conferido é o daquele canal do mesmo jeito — em nenhum dos
+ * dois caminhos existe token global.
+ */
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ canal?: string[] }> }
+) {
+  const { canal } = await params;
+  const channelIdNaUrl = canal?.[0];
+
+  let corpo: EvolutionEnvelope;
+  try {
+    corpo = (await request.json()) as EvolutionEnvelope;
+  } catch (err) {
+    console.error("[evolution] payload ilegível", err);
+    return NextResponse.json({ ok: true });
+  }
+
+  const db = supabaseAdmin();
+
+  // Sem id na URL, o canal vem do nome da instância. Ler o corpo antes de
+  // autenticar é o preço do caminho antigo: nada é gravado até o token bater.
+  let channelId = channelIdNaUrl;
+  if (!channelId) {
+    const instancia = corpo?.instance;
+    if (!instancia) return new NextResponse("Não autorizado", { status: 401 });
+
+    const { data } = await db
+      .from("channels")
+      .select("id")
+      .eq("instance_name", instancia)
+      .maybeSingle();
+
+    if (!data) return new NextResponse("Não autorizado", { status: 401 });
+    channelId = data.id as string;
+  }
+
+  let credenciais;
+  try {
+    credenciais = await credenciaisDoCanal(channelId);
+  } catch {
+    return new NextResponse("Não autorizado", { status: 401 });
+  }
+
+  if (!verifyWebhookToken(request.headers.get("authorization"), credenciais.webhook_token)) {
     return new NextResponse("Não autorizado", { status: 401 });
   }
 
   let events;
   try {
-    events = parseWebhook(await request.json());
+    events = parseWebhook(corpo);
   } catch (err) {
     console.error("[evolution] payload ilegível", err);
     return NextResponse.json({ ok: true });
@@ -179,7 +233,7 @@ async function handleInboundMessage(event: EvoInboundMessage) {
     if (event.type === "text") {
       void enfileirarTurno(turnoDoBot(conversation.id, event));
     } else {
-      void tratarMidia(conversation.id, event);
+      void tratarMidia(conversation.id, channel.id, event);
     }
   }
 }
@@ -191,8 +245,12 @@ async function handleInboundMessage(event: EvoInboundMessage) {
  * alguns segundos, e a Evolution reenvia o evento se demorarmos a responder —
  * uma foto viraria duas mensagens.
  */
-async function tratarMidia(conversationId: string, event: EvoInboundMessage) {
-  const leitura = await entenderMidia(event);
+async function tratarMidia(
+  conversationId: string,
+  channelId: string,
+  event: EvoInboundMessage
+) {
+  const leitura = await entenderMidia(event, channelId);
 
   if (leitura.ok) {
     const db = supabaseAdmin();

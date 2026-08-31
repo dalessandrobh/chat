@@ -193,6 +193,46 @@ begin
   raise notice 'ok: a importação de uma empresa não toca na outra';
 end $$;
 
+\echo '=== credencial de canal não atravessa empresa ==='
+
+-- A da empresa A é gravada por ela, e some do alcance de B.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111aa","role":"authenticated"}';
+do $$
+begin
+  perform chat.set_channel_secret('11111111-0000-0000-0000-0000000000c1', 'api_key', 'segredo-da-empresa-a');
+
+  begin
+    perform chat.set_channel_secret('22222222-0000-0000-0000-0000000000c1', 'api_key', 'invasao');
+    raise exception 'FALHOU: A gravou credencial no canal de B';
+  exception when insufficient_privilege then null;
+  end;
+
+  if (select count(*) from unnest(chat.channel_secret_names('22222222-0000-0000-0000-0000000000c1'))) > 0 then
+    raise exception 'FALHOU: A lista as credenciais do canal de B';
+  end if;
+
+  raise notice 'ok: A não grava nem lista credencial de B';
+end $$;
+reset role;
+
+-- E o painel não tem caminho para o valor: channel_credentials é só do servidor.
+do $$
+declare v_tem boolean;
+begin
+  select has_function_privilege('authenticated', 'chat.channel_credentials(uuid)', 'execute') into v_tem;
+  if v_tem then
+    raise exception 'FALHOU: o navegador pode ler credenciais decifradas';
+  end if;
+
+  if (chat.channel_credentials('11111111-0000-0000-0000-0000000000c1') ->> 'api_key')
+     <> 'segredo-da-empresa-a' then
+    raise exception 'FALHOU: o servidor não leu a credencial de volta';
+  end if;
+
+  raise notice 'ok: só o servidor lê credencial, e lê a certa';
+end $$;
+
 \echo '=== desconhecido logado não vê nada ==='
 
 set local role authenticated;

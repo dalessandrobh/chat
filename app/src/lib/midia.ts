@@ -18,6 +18,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { serverEnv } from "@/lib/env";
 import { lerImagensLigado } from "@/lib/ajustes";
 import { getMediaBase64 } from "@/lib/evolution/client";
+import { conexaoDoCanal } from "@/lib/canais";
 import type { EvoInboundMessage } from "@/lib/evolution/webhook";
 
 /** Formatos que a API de visão aceita. Fora disso, nem tenta. */
@@ -49,7 +50,10 @@ export type LeituraMidia =
   | { ok: false; acao: "perguntar"; leImagens: boolean }
   | { ok: false; acao: "escalar" };
 
-export async function entenderMidia(event: EvoInboundMessage): Promise<LeituraMidia> {
+export async function entenderMidia(
+  event: EvoInboundMessage,
+  channelId: string
+): Promise<LeituraMidia> {
   const ehImagem = event.type === "image" || event.type === "sticker";
   const ehAudio = event.type === "audio";
   const ehVideo = event.type === "video";
@@ -63,7 +67,7 @@ export async function entenderMidia(event: EvoInboundMessage): Promise<LeituraMi
   if (!ehImagem && !ehAudio) return { ok: false, acao: "escalar" };
   if (ehAudio && !serverEnv.midia.leAudio) return { ok: false, acao: "escalar" };
 
-  const base64 = await baixar(event);
+  const base64 = await baixar(event, channelId);
   if (!base64) return { ok: false, acao: "escalar" };
 
   try {
@@ -82,11 +86,12 @@ export async function entenderMidia(event: EvoInboundMessage): Promise<LeituraMi
  * instância está configurada. Quando não traz, a Evolution devolve o arquivo
  * decriptado sob demanda.
  */
-async function baixar(event: EvoInboundMessage): Promise<string | null> {
+async function baixar(event: EvoInboundMessage, channelId: string): Promise<string | null> {
   if (event.media?.base64) return event.media.base64;
 
   try {
-    const baixada = await getMediaBase64(event.instanceName, event.waMessageId);
+    const conn = await conexaoDoCanal(channelId);
+    const baixada = await getMediaBase64(conn, event.instanceName, event.waMessageId);
     return baixada.base64 ?? null;
   } catch (err) {
     console.error("[mídia] download falhou na Evolution", err);

@@ -65,14 +65,15 @@ export const serverEnv = {
       return required("EVOLUTION_API_KEY");
     },
     /**
-     * Segredo NOSSO, não da Evolution: exigido no Authorization do webhook
-     * de entrada. A Evolution não assina os webhooks dela, então sem isso
-     * qualquer um que descubra a URL consegue injetar mensagem falsa no
-     * inbox.
+     * Endereço e chave padrão da plataforma. São **copiados** para a linha do
+     * canal quando ele é criado, e nunca consultados na hora de enviar: quem
+     * envia lê a credencial do próprio canal. A diferença importa no dia em
+     * que o padrão mudar — o canal antigo continua falando com o servidor
+     * onde a sessão dele existe.
+     *
+     * O token do webhook não mora mais aqui: cada canal tem o seu, gerado no
+     * cadastro e guardado no cofre.
      */
-    get webhookToken() {
-      return required("EVOLUTION_WEBHOOK_TOKEN");
-    },
     /**
      * Para onde a Evolution manda os eventos de um canal novo. É endereço da
      * rede interna do Docker: o webhook não passa pela internet, então não
