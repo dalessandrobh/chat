@@ -81,7 +81,9 @@ export async function POST(request: Request) {
   }
 
   // Recontagem a partir do banco, não do que achamos ter gravado.
-  const { data: rendered } = await supabaseAdmin().rpc("render_knowledge");
+  const { data: rendered } = await supabaseAdmin().rpc("render_knowledge", {
+    p_company_id: agent.company_id,
+  });
 
   return NextResponse.json({
     importadas: linhas.length,

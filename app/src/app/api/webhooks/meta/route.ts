@@ -108,7 +108,7 @@ async function handleInboundMessage(event: InboundMessage) {
   // 2. Canal correspondente ao número que recebeu
   const { data: channel } = await db
     .from("channels")
-    .select("id")
+    .select("id, company_id")
     .eq("phone_number_id", event.phoneNumberId)
     .maybeSingle();
 
@@ -135,6 +135,8 @@ async function handleInboundMessage(event: InboundMessage) {
   const { error: messageError } = await db.from("messages").insert({
     conversation_id: conversationId,
     channel_id: channel.id,
+    // Dono da linha, vindo do canal identificado pelo phone_number_id.
+    company_id: channel.company_id,
     direction: "in",
     wa_message_id: event.waMessageId,
     type: event.type,

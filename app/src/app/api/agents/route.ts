@@ -123,7 +123,14 @@ export async function POST(request: Request) {
   const { data: saved, error: upsertError } = await db
     .from("agents")
     .upsert(
-      { id: userId, email, full_name: fullName, role, is_active: true },
+      {
+        id: userId,
+        email,
+        full_name: fullName,
+        role,
+        is_active: true,
+        company_id: agent.company_id,
+      },
       { onConflict: "id" }
     )
     .select("id, email, full_name, role, is_active, created_at")

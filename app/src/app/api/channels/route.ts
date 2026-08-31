@@ -72,6 +72,7 @@ export async function POST(request: Request) {
       instance_name: instanceName,
       is_active: true,
       connection_state: "close",
+      company_id: agent.company_id,
     })
     .select("id, name, provider, instance_name, display_phone_number, connection_state, connected_at, is_active")
     .single();

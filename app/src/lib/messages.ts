@@ -42,6 +42,7 @@ type Provider = "meta_cloud" | "evolution";
 interface ConversationRow {
   id: string;
   channel_id: string;
+  company_id: string;
   window_expires_at: string | null;
   contacts: { wa_id: string } | null;
   channels: { provider: Provider; instance_name: string | null } | null;
@@ -51,7 +52,7 @@ async function loadConversation(conversationId: string): Promise<ConversationRow
   const { data } = await supabaseAdmin()
     .from("conversations")
     .select(
-      "id, channel_id, window_expires_at, contacts(wa_id), channels(provider, instance_name)"
+      "id, channel_id, company_id, window_expires_at, contacts(wa_id), channels(provider, instance_name)"
     )
     .eq("id", conversationId)
     .maybeSingle();
@@ -151,6 +152,7 @@ async function dispatchMedia(
 async function recordOutbound(input: {
   conversationId: string;
   channelId: string;
+  companyId: string;
   waMessageId: string | null;
   type: string;
   body: string | null;
@@ -167,6 +169,7 @@ async function recordOutbound(input: {
     .insert({
       conversation_id: input.conversationId,
       channel_id: input.channelId,
+      company_id: input.companyId,
       direction: "out",
       wa_message_id: input.waMessageId,
       type: input.type,
@@ -224,6 +227,7 @@ export async function sendTextMessage(input: {
     const messageId = await recordOutbound({
       conversationId: conversation.id,
       channelId: conversation.channel_id,
+      companyId: conversation.company_id,
       waMessageId,
       type: "text",
       body: input.text,
@@ -238,6 +242,7 @@ export async function sendTextMessage(input: {
     return handleSendFailure(err, {
       conversationId: conversation.id,
       channelId: conversation.channel_id,
+      companyId: conversation.company_id,
       type: "text",
       body: input.text,
       author: input.author,
@@ -320,6 +325,7 @@ export async function sendTemplateMessage(input: {
     const messageId = await recordOutbound({
       conversationId: conversation.id,
       channelId: conversation.channel_id,
+      companyId: conversation.company_id,
       waMessageId,
       type: "template",
       body: bodyText,
@@ -336,6 +342,7 @@ export async function sendTemplateMessage(input: {
     return handleSendFailure(err, {
       conversationId: conversation.id,
       channelId: conversation.channel_id,
+      companyId: conversation.company_id,
       type: "template",
       body: template.name,
       author: input.author,
@@ -398,6 +405,7 @@ export async function sendMediaMessage(input: {
     const messageId = await recordOutbound({
       conversationId: conversation.id,
       channelId: conversation.channel_id,
+      companyId: conversation.company_id,
       waMessageId,
       type: input.kind,
       body: input.caption ?? null,
@@ -412,6 +420,7 @@ export async function sendMediaMessage(input: {
     return handleSendFailure(err, {
       conversationId: conversation.id,
       channelId: conversation.channel_id,
+      companyId: conversation.company_id,
       type: input.kind,
       body: input.caption ?? null,
       author: input.author,
@@ -429,6 +438,7 @@ async function handleSendFailure(
   ctx: {
     conversationId: string;
     channelId: string;
+    companyId: string;
     type: string;
     body: string | null;
     author: "bot" | "agent" | "system";
@@ -449,6 +459,7 @@ async function handleSendFailure(
   await recordOutbound({
     conversationId: ctx.conversationId,
     channelId: ctx.channelId,
+    companyId: ctx.companyId,
     waMessageId: null,
     type: ctx.type,
     body: ctx.body,

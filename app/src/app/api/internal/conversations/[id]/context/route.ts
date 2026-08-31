@@ -38,7 +38,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const { data: conversation } = await db
     .from("conversations")
     .select(
-      "id, mode, status, window_expires_at, contact_id, contacts(wa_id, profile_name, display_name, tags, metadata), channels(provider, name)"
+      "id, mode, status, window_expires_at, contact_id, company_id, contacts(wa_id, profile_name, display_name, tags, metadata), channels(provider, name)"
     )
     .eq("id", id)
     .maybeSingle();
@@ -49,7 +49,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   // A base vai junto do contexto de propósito: o workflow já faz esta
   // chamada, então a base chega ao agente sem mexer no desenho do fluxo.
-  const { data: base } = await db.rpc("render_knowledge");
+  //
+  // A empresa vem da conversa. Esta rota roda com chave de serviço, que ignora
+  // a RLS: sem o parâmetro, o prompt sairia com a base de todas as empresas
+  // juntas — e o agente de uma responderia com o preço da outra.
+  const { data: base } = await db.rpc("render_knowledge", {
+    p_company_id: conversation.company_id,
+  });
 
   const { data: messages } = await db
     .from("messages")

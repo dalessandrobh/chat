@@ -150,6 +150,7 @@ export async function POST(request: Request) {
         status: (metaResult.status ?? "PENDING").toUpperCase(),
         created_by: agent.id,
         last_synced_at: new Date().toISOString(),
+        company_id: agent.company_id,
       },
       { onConflict: "channel_id,name,language" }
     )

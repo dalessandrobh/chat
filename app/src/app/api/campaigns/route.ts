@@ -65,6 +65,7 @@ export async function POST(request: Request) {
     .from("campaigns")
     .insert({
       channel_id: d.channelId,
+      company_id: agent.company_id,
       name: d.name,
       status: d.scheduledAt ? "scheduled" : "draft",
       media_kind: d.mediaKind,

@@ -18,6 +18,7 @@ interface Claim {
   recipient_id: string;
   campaign_id: string;
   channel_id: string;
+  company_id: string;
   wa_id: string;
   name: string;
   media_kind: "text" | "image" | "video" | "audio" | "document";
@@ -92,6 +93,7 @@ async function enviarUm(claim: Claim): Promise<boolean> {
   // resolve nada e tirá-lo da base seria injusto com ele.
   if (resultado.reason !== "disconnected") {
     await db.rpc("opt_out", {
+      p_company_id: claim.company_id,
       p_wa_id: claim.wa_id,
       // Guardar o motivo certo é o que permite, depois, separar "a base tem
       // números errados" de "o WhatsApp está recusando meus envios" — só o

@@ -85,7 +85,7 @@ async function handleInboundMessage(event: EvoInboundMessage) {
   // 2. Canal pela instância
   const { data: channel } = await db
     .from("channels")
-    .select("id, is_active")
+    .select("id, is_active, company_id")
     .eq("instance_name", event.instanceName)
     .maybeSingle();
 
@@ -119,6 +119,9 @@ async function handleInboundMessage(event: EvoInboundMessage) {
   const { error: messageError } = await db.from("messages").insert({
     conversation_id: conversationId,
     channel_id: channel.id,
+    // Dono da linha. Vem do canal, que foi identificado pela instância que
+    // mandou o evento — nada aqui é escolhido por quem chamou o webhook.
+    company_id: channel.company_id,
     direction: outbound ? "out" : "in",
     wa_message_id: event.waMessageId,
     type: event.type,
@@ -141,7 +144,7 @@ async function handleInboundMessage(event: EvoInboundMessage) {
   // Pedido de saída tem precedência sobre tudo: nem bot responde, nem
   // campanha alcança de novo.
   if (!outbound && pediuParaSair(event.body)) {
-    await handleOptOut(conversationId as string, event.from);
+    await handleOptOut(channel.company_id, conversationId as string, event.from);
     return;
   }
 
@@ -272,10 +275,16 @@ async function ofereceAtendente(conversationId: string, leImagens: boolean) {
  * A confirmação não é gentileza: sem resposta, quem pediu para sair repete o
  * pedido — e a segunda tentativa costuma ser o botão de denunciar.
  */
-async function handleOptOut(conversationId: string, waId: string) {
+async function handleOptOut(companyId: string, conversationId: string, waId: string) {
   const db = supabaseAdmin();
 
-  const { error } = await db.rpc("opt_out", { p_wa_id: waId, p_reason: "opt_out" });
+  // Sai da lista desta empresa e de mais nenhuma: descadastro é obrigação de
+  // quem recebeu o pedido.
+  const { error } = await db.rpc("opt_out", {
+    p_company_id: companyId,
+    p_wa_id: waId,
+    p_reason: "opt_out",
+  });
   if (error) console.error("[opt-out] falha ao remover da lista", error);
 
   const enviada = await sendTextMessage({

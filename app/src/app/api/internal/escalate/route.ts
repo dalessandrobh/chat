@@ -40,9 +40,12 @@ export async function POST(request: Request) {
   const db = supabaseAdmin();
   const { conversationId, reason, message } = parsed.data;
 
+  // A empresa vem da própria conversa. Esta rota roda com chave de serviço,
+  // que ignora a RLS: aceitar a empresa do corpo do pedido seria deixar quem
+  // chama escolher em nome de quem age.
   const { data: before } = await db
     .from("conversations")
-    .select("mode")
+    .select("mode, company_id")
     .eq("id", conversationId)
     .maybeSingle();
 
@@ -89,6 +92,7 @@ export async function POST(request: Request) {
     to_mode: "human",
     actor: "bot",
     reason: reason ?? "Escalado pela automação",
+    company_id: before.company_id,
   });
 
   return NextResponse.json({ ok: true });

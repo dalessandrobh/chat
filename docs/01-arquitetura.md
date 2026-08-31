@@ -128,3 +128,60 @@ pelo banco e precisam parar mesmo que alguém rode um script na mão.
 > `chat.channels.is_active` existia desde o primeiro dia e não era lido por
 > ninguém. Dava para desligar um número no banco e ele continuar atendendo e
 > disparando.
+
+
+## Multiempresa: como o isolamento funciona
+
+Uma pessoa pertence a **uma** empresa. Quem atende duas tem dois logins. Essa
+decisão é o que torna o resto simples: não existe "empresa ativa na sessão",
+não existe seletor e não existe tabela de vínculo — a empresa é a do usuário
+logado.
+
+```
+chat.current_company()  →  a empresa do agente ativo em auth.uid(), ou nulo
+```
+
+Toda política de acesso compara `company_id = chat.current_company()`. Quem não
+é agente ativo recebe nulo, e comparação com nulo é falsa: a política nega
+sozinha, sem precisar de um "e existe agente" em cada uma.
+
+**Nenhuma política tem exceção para dono de plataforma.** Toda porta de fuga
+dentro da regra de acesso é um vazamento esperando. Enxergar a conta do cliente
+para dar suporte será superfície separada e auditada, não um `or` no meio da
+política.
+
+### As três camadas
+
+| Camada | O que protege | Onde |
+|---|---|---|
+| Coluna | toda linha tem dono | `company_id` em 12 tabelas |
+| Política | o navegador só lê o que é dele | 19 políticas + `security_invoker` nas views |
+| Função | o servidor carimba o dono certo | as `security definer` de 0017 |
+
+A terceira camada é a que não se vê. Funções `security definer` rodam com os
+direitos de quem as criou e **passam por cima de qualquer política** — é como
+elas gravam em nome do webhook, que não tem usuário logado. Ali a separação é
+responsabilidade do corpo da função:
+
+- quem grava carimba a empresa **derivada do canal ou da conversa**, nunca de
+  um parâmetro vindo de fora;
+- quem age em nome de alguém logado chama `chat.assert_same_company()` antes.
+
+### A view que ignorava a RLS
+
+View sem `security_invoker` roda com os direitos de quem a criou. Medido antes
+da correção: um usuário logado que não era agente de ninguém via **0 linhas em
+`chat.conversations` e 7 em `chat.inbox`**, com nome, telefone e prévia da
+conversa. Isso já valia com uma empresa só.
+
+Ao criar view nova sobre tabela com RLS, `security_invoker = true` não é
+opcional.
+
+### Testar
+
+`supabase/tests/isolamento.sql` cria duas empresas fantasmas, afirma que
+nenhuma enxerga ou age sobre a outra, e desfaz tudo no fim. Roda em uma
+transação e para no primeiro `FALHOU`.
+
+Vale rodar depois de qualquer mudança em política, view ou função
+`security definer`.

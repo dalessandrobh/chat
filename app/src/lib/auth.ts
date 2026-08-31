@@ -15,12 +15,21 @@ export async function currentAgent() {
 
   const { data: agent } = await supabase
     .from("agents")
-    .select("id, full_name, role, is_active")
+    .select("id, full_name, role, is_active, company_id")
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!agent?.is_active) return null;
-  return agent as { id: string; full_name: string | null; role: string; is_active: boolean };
+  // Sem empresa a pessoa não opera nada: é quem se cadastrou e ainda não foi
+  // convidada. A tela mostra "acesso pendente"; as rotas devolvem 401.
+  if (!agent?.is_active || !agent.company_id) return null;
+
+  return agent as {
+    id: string;
+    full_name: string | null;
+    role: string;
+    is_active: boolean;
+    company_id: string;
+  };
 }
 
 export function unauthorized(message = "Não autenticado") {

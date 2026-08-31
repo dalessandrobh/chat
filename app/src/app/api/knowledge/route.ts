@@ -44,7 +44,9 @@ export async function GET() {
 
   // O texto vem da mesma função que o agente usa. Se a tela montasse o seu
   // próprio, um dia os dois divergiriam e ninguém perceberia.
-  const { data: rendered } = await supabase.rpc("render_knowledge");
+  const { data: rendered } = await supabase.rpc("render_knowledge", {
+    p_company_id: agent.company_id,
+  });
 
   return NextResponse.json({
     sections,
@@ -76,6 +78,7 @@ export async function POST(request: Request) {
       // Nasce desligada: ligar é dizer "conferi, pode falar isso".
       is_active: parsed.data.isActive ?? false,
       updated_by: agent.id,
+      company_id: agent.company_id,
     })
     .select("id, title, content, position, is_active, updated_at")
     .single();

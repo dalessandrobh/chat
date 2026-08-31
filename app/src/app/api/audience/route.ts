@@ -75,8 +75,13 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from("audience")
     .upsert(
-      lista.map((c) => ({ name: c.name, wa_id: c.waId, tags: c.tags ?? [] })),
-      { onConflict: "wa_id", ignoreDuplicates: true }
+      lista.map((c) => ({
+        name: c.name,
+        wa_id: c.waId,
+        tags: c.tags ?? [],
+        company_id: agent.company_id,
+      })),
+      { onConflict: "company_id,wa_id", ignoreDuplicates: true }
     )
     .select("id");
 

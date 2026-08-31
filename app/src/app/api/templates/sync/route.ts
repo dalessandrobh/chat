@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   // Todos os templates pertencem à WABA configurada; resolvemos o canal dela.
   const { data: channel } = await db
     .from("channels")
-    .select("id")
+    .select("id, company_id")
     .eq("phone_number_id", serverEnv.meta.phoneNumberId)
     .maybeSingle();
 
@@ -47,6 +47,7 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
   const rows = remote.map((t) => ({
     channel_id: channel.id,
+    company_id: channel.company_id,
     name: t.name,
     language: t.language,
     category: (t.category ?? "UTILITY").toUpperCase(),
