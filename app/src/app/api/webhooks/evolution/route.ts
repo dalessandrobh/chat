@@ -15,6 +15,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/messages";
 import { CONFIRMACAO_SAIDA, pediuParaSair } from "@/lib/opt-out";
 import { enfileirarTurno, enviarTurno, turnoDoBot } from "@/lib/bot-queue";
+import { entenderMidia } from "@/lib/midia";
 import {
   parseWebhook,
   verifyWebhookToken,
@@ -167,15 +168,47 @@ async function handleInboundMessage(event: EvoInboundMessage) {
     .maybeSingle();
 
   if (conversation?.mode === "bot") {
-    const turno = turnoDoBot(conversation.id, event);
-
     // Texto entra na janela; mídia não espera. Ver lib/bot-queue.ts.
     if (event.type === "text") {
-      void enfileirarTurno(turno);
+      void enfileirarTurno(turnoDoBot(conversation.id, event));
     } else {
-      void enviarTurno(turno);
+      void tratarMidia(conversation.id, event);
     }
   }
+}
+
+/**
+ * Lê a mídia, guarda o que entendeu e só então aciona o bot.
+ *
+ * Fora da requisição do webhook de propósito: descrever uma imagem leva
+ * alguns segundos, e a Evolution reenvia o evento se demorarmos a responder —
+ * uma foto viraria duas mensagens.
+ */
+async function tratarMidia(conversationId: string, event: EvoInboundMessage) {
+  const texto = await entenderMidia(event);
+
+  if (texto) {
+    const db = supabaseAdmin();
+    const icone = event.type === "audio" ? "🎤" : "📷";
+
+    // O corpo é o que o agente lê na transcrição e o que aparece no painel.
+    await db
+      .from("messages")
+      .update({ body: texto })
+      .eq("wa_message_id", event.waMessageId)
+      .eq("conversation_id", conversationId);
+
+    // O gatilho do banco já montou o preview com a mensagem vazia ("📷
+    // Imagem"), e ele não roda de novo por causa deste update.
+    await db
+      .from("conversations")
+      .update({ last_message_preview: `${icone} ${texto}`.slice(0, 120) })
+      .eq("id", conversationId);
+  }
+
+  // Sem leitura, `text` vai vazio e o fluxo do n8n avisa que não lemos e
+  // chama uma pessoa — que é o que sempre aconteceu com mídia.
+  await enviarTurno(turnoDoBot(conversationId, texto ? { ...event, body: texto } : event));
 }
 
 /**

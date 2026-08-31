@@ -90,6 +90,25 @@ export const serverEnv = {
 
   /** Webhook do n8n que recebe mensagens quando a conversa está em modo bot. */
   n8nWebhookUrl: optional("N8N_WEBHOOK_URL"),
+
+  /**
+   * Entender mídia que o cliente manda. Sem chave, nada quebra: a imagem e o
+   * áudio seguem indo para uma pessoa, como antes de existir esta seção.
+   */
+  midia: {
+    /** Descrever imagem. É a mesma chave do console.anthropic.com que o n8n usa. */
+    anthropicKey: optional("ANTHROPIC_API_KEY"),
+    modeloImagem: optional("ANTHROPIC_MODEL_IMAGEM", "claude-opus-5"),
+    /** Transcrever áudio. Conta separada — a Anthropic não recebe áudio. */
+    openaiKey: optional("OPENAI_API_KEY"),
+    modeloAudio: optional("OPENAI_MODEL_AUDIO", "whisper-1"),
+    get leImagem() {
+      return isSet("ANTHROPIC_API_KEY");
+    },
+    get leAudio() {
+      return isSet("OPENAI_API_KEY");
+    },
+  },
 } as const;
 
 // publicEnv vive em @/lib/env.public — ver o comentário de lá.

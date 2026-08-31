@@ -47,13 +47,14 @@
           },
           "conditions": [
             {
-              "id": "e-texto",
+              "id": "tem-texto",
               "operator": {
                 "type": "string",
-                "operation": "equals"
+                "operation": "notEmpty",
+                "singleValue": true
               },
-              "leftValue": "={{ $json.tipo }}",
-              "rightValue": "text"
+              "leftValue": "={{ $json.texto }}",
+              "rightValue": ""
             }
           ],
           "combinator": "and"
@@ -61,14 +62,14 @@
         "options": {}
       },
       "id": "e-texto",
-      "name": "É texto?",
+      "name": "Tem texto?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
         -280,
         300
       ],
-      "notes": "Áudio e imagem entram na Fase 3. Até lá o agente não finge que entendeu."
+      "notes": "Mídia que o painel conseguiu ler chega com texto e segue pelo caminho normal."
     },
     {
       "parameters": {
@@ -308,7 +309,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ type: 'text', conversationId: $json.conversationId, text: 'Recebi seu arquivo, mas por aqui ainda só consigo ler texto. Já estou chamando uma pessoa da equipe para ver com você.' }) }}",
+        "jsonBody": "={{ JSON.stringify({ type: 'text', conversationId: $json.conversationId, text: 'Recebi seu arquivo, mas não consegui abrir por aqui. Já estou chamando uma pessoa da equipe para ver com você.' }) }}",
         "options": {
           "response": {
             "response": {
@@ -318,7 +319,7 @@
         }
       },
       "id": "avisar-midia",
-      "name": "Avisar que não leio áudio",
+      "name": "Avisar que não consegui ler",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -341,7 +342,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ conversationId: $('Normalizar').item.json.conversationId, reason: 'Mensagem de mídia, que o agente ainda não lê' }) }}",
+        "jsonBody": "={{ JSON.stringify({ conversationId: $('Normalizar').item.json.conversationId, reason: 'Mídia que não consegui ler' }) }}",
         "options": {
           "response": {
             "response": {
@@ -394,14 +395,14 @@
       "main": [
         [
           {
-            "node": "É texto?",
+            "node": "Tem texto?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "É texto?": {
+    "Tem texto?": {
       "main": [
         [
           {
@@ -412,14 +413,14 @@
         ],
         [
           {
-            "node": "Avisar que não leio áudio",
+            "node": "Avisar que não consegui ler",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Avisar que não leio áudio": {
+    "Avisar que não consegui ler": {
       "main": [
         [
           {

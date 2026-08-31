@@ -26,6 +26,29 @@ function AuthorTag({ message }: { message: Message }) {
   );
 }
 
+const ICONE_MIDIA: Record<string, string> = {
+  image: "📷",
+  sticker: "📷",
+  audio: "🎤",
+  video: "🎬",
+  document: "📄",
+};
+
+/**
+ * O rótulo diz de onde veio o texto. Sem isso o atendente lê a descrição da
+ * foto como se o cliente tivesse escrito aquilo — e responde a uma frase que
+ * ninguém disse.
+ */
+function rotuloMidia(message: Message) {
+  const icone = ICONE_MIDIA[message.type] ?? "📎";
+  const tipo = String(message.media?.mimeType ?? message.type);
+
+  if (!message.body) return `${icone} ${tipo}`;
+  return message.type === "audio"
+    ? `${icone} áudio — transcrito automaticamente`
+    : `${icone} ${tipo} — descrição automática`;
+}
+
 function Bubble({ message }: { message: Message }) {
   const incoming = message.direction === "in";
   const failed = message.status === "failed";
@@ -44,10 +67,12 @@ function Bubble({ message }: { message: Message }) {
         <AuthorTag message={message} />
 
         {message.media ? (
-          <p className="text-sm italic opacity-80">
-            📎 {String(message.media.mimeType ?? message.type)}
-            {message.body ? ` — ${message.body}` : ""}
-          </p>
+          <>
+            <p className="text-[11px] italic opacity-60">{rotuloMidia(message)}</p>
+            {message.body && (
+              <p className="whitespace-pre-wrap break-words text-sm">{message.body}</p>
+            )}
+          </>
         ) : (
           <p className="whitespace-pre-wrap break-words text-sm">
             {message.body ?? `[${message.type}]`}

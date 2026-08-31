@@ -71,7 +71,7 @@ Depois **Active** no canto superior direito. Workflow inativo não atende.
 Tanto o "Import from URL" quanto o `n8n import:workflow` descartam o vínculo
 das credenciais: os nós voltam sem nenhuma. Depois de qualquer reimportação,
 percorra os oito nós que precisam de credencial — `Mensagem recebida`,
-`Buscar contexto`, `Responder`, `Avisar que não leio áudio`,
+`Buscar contexto`, `Responder`, `Avisar que não consegui ler`,
 `Escalar (mídia)`, `escalar_para_humano`, `anotar_dados` e `Claude` — e
 selecione de novo.
 O sintoma, quando falta, é `Credentials not found` no nó `escalar_para_humano`.
@@ -127,6 +127,36 @@ Se o agente escalasse primeiro e falasse depois, a fala esbarraria na própria
 trava de handoff: o modo já seria `human`, `/api/internal/send` devolveria 409
 e o cliente ficaria sem resposta nenhuma — escalado em silêncio. O texto está
 no `jsonBody` do nó da ferramenta, e é lá que se edita.
+
+## Foto e áudio viram texto antes de chegar aqui
+
+O agente lê `chat.messages`, e mensagem sem corpo não diz nada a ele. Foto do
+telhado e áudio de trinta segundos chegavam como `(image)` / `(audio)` e a
+conversa ia direto para uma pessoa.
+
+Agora o painel lê a mídia **antes** de acionar o bot:
+
+| Tipo | Como | Chave |
+|---|---|---|
+| Imagem, figurinha | Claude, pela Messages API | `ANTHROPIC_API_KEY` |
+| Áudio | Whisper | `OPENAI_API_KEY` |
+| Vídeo, documento | ninguém — segue para uma pessoa | — |
+
+O texto entendido é gravado no `body` da própria mensagem. Daí em diante nada
+mais sabe que aquilo veio de uma foto: a transcrição entra no histórico, o
+painel mostra o conteúdo, e o nó `Tem texto?` deixa passar.
+
+**Sem chave, nada quebra.** A mídia continua indo para uma pessoa, com o aviso
+de sempre. É por isso que o nó chama `Tem texto?` e não `É texto?`: o que
+importa é haver o que responder, não como chegou.
+
+**No painel o texto vem rotulado** — "🎤 áudio — transcrito automaticamente".
+Sem o rótulo o atendente lê a descrição da foto como se o cliente tivesse
+escrito aquilo, e responde a uma frase que ninguém disse.
+
+A leitura acontece fora da requisição do webhook. Descrever imagem leva alguns
+segundos e a Evolution reenvia o evento se demorarmos a responder — uma foto
+viraria duas mensagens.
 
 ## Uma resposta por rajada, não por mensagem
 
