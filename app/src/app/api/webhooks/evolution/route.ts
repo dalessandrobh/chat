@@ -12,9 +12,9 @@
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { serverEnv } from "@/lib/env";
 import { sendTextMessage } from "@/lib/messages";
 import { CONFIRMACAO_SAIDA, pediuParaSair } from "@/lib/opt-out";
+import { enfileirarTurno, enviarTurno, turnoDoBot } from "@/lib/bot-queue";
 import {
   parseWebhook,
   verifyWebhookToken,
@@ -167,7 +167,14 @@ async function handleInboundMessage(event: EvoInboundMessage) {
     .maybeSingle();
 
   if (conversation?.mode === "bot") {
-    void forwardToN8n(conversation.id, event);
+    const turno = turnoDoBot(conversation.id, event);
+
+    // Texto entra na janela; mídia não espera. Ver lib/bot-queue.ts.
+    if (event.type === "text") {
+      void enfileirarTurno(turno);
+    } else {
+      void enviarTurno(turno);
+    }
   }
 }
 
@@ -190,46 +197,6 @@ async function handleOptOut(conversationId: string, waId: string) {
   });
   if (!enviada.ok) {
     console.error(`[opt-out] confirmação não enviada: ${enviada.message}`);
-  }
-}
-
-async function forwardToN8n(conversationId: string, event: EvoInboundMessage) {
-  if (!serverEnv.n8nWebhookUrl) return;
-
-  try {
-    const response = await fetch(serverEnv.n8nWebhookUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${serverEnv.serviceToken}`,
-      },
-      body: JSON.stringify({
-        conversationId,
-        provider: "evolution",
-        waMessageId: event.waMessageId,
-        from: event.from,
-        profileName: event.profileName,
-        type: event.type,
-        text: event.body,
-        // O base64 da mídia não vai para o n8n: engordaria o payload à toa.
-        // Quem precisar busca em /chat/getBase64FromMediaMessage.
-        hasMedia: Boolean(event.media),
-        receivedAt: event.timestamp.toISOString(),
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
-
-    // Sem isto, credencial errada no n8n vira silêncio absoluto: o webhook
-    // devolve 200, a mensagem fica gravada, e ninguém responde ao cliente.
-    // Foi exatamente assim que um 403 passou despercebido.
-    if (!response.ok) {
-      console.error(
-        `[webhook] n8n recusou o encaminhamento: HTTP ${response.status} — ` +
-          (await response.text().catch(() => "")).slice(0, 200)
-      );
-    }
-  } catch (err) {
-    console.error("[evolution] n8n indisponível", err);
   }
 }
 

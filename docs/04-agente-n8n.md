@@ -128,6 +128,33 @@ trava de handoff: o modo já seria `human`, `/api/internal/send` devolveria 409
 e o cliente ficaria sem resposta nenhuma — escalado em silêncio. O texto está
 no `jsonBody` do nó da ferramenta, e é lá que se edita.
 
+## Uma resposta por rajada, não por mensagem
+
+No WhatsApp ninguém escreve um parágrafo. Escreve "oi", "queria saber",
+"sobre aquecedor solar" — três webhooks em cinco segundos. Antes disso o
+agente rodava três vezes, cada resposta em cima de meia pergunta, e as
+respostas ainda chegavam fora de ordem.
+
+Agora a mensagem de texto não vai direto para o n8n. Ela entra numa janela
+deslizante em `chat.message_batches`:
+
+- cada mensagem nova empurra o vencimento para **8 segundos** à frente;
+- o cliente para de digitar, a janela vence, o agente roda **uma vez**;
+- quem nunca para esbarra no teto de **40 segundos** e é respondido assim
+  mesmo — esperar para sempre é o mesmo que não responder.
+
+O `text` do payload vai se emendando: o agente recebe as três linhas juntas,
+não só a última. Quem conta os segundos é o relógio de `instrumentation.ts`,
+que bate a cada 2s e quase sempre não acha nada.
+
+**Mídia não espera.** Áudio e imagem seguem direto, porque o aviso de "não
+leio áudio" e a escalação que vem junto não podem ficar oito segundos parados
+atrás de uma janela.
+
+Para mexer na janela, os parâmetros são da função
+`chat.enqueue_bot_turn(..., p_janela, p_teto)` — não há nada disso no n8n, que
+continua recebendo um POST por turno como sempre recebeu.
+
 ## A fila de perguntas não mora no prompt
 
 O agente qualifica — nome, cidade, casa ou piscina, quantas pessoas — mas a
