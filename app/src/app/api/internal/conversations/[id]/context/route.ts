@@ -14,6 +14,7 @@
 import { NextResponse } from "next/server";
 import { hasServiceToken } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { faltandoTexto, lerQualificacao, registrarTentativa } from "@/lib/qualificacao";
 
 /** Teto de mensagens no contexto. Conversa de WhatsApp é longa e picotada;
  *  as 40 últimas cobrem o assunto atual sem inflar o prompt. */
@@ -37,7 +38,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const { data: conversation } = await db
     .from("conversations")
     .select(
-      "id, mode, status, window_expires_at, contacts(wa_id, profile_name, display_name, tags), channels(provider, name)"
+      "id, mode, status, window_expires_at, contact_id, contacts(wa_id, profile_name, display_name, tags, metadata), channels(provider, name)"
     )
     .eq("id", id)
     .maybeSingle();
@@ -66,7 +67,24 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     profile_name: string | null;
     display_name: string | null;
     tags: string[];
+    metadata: Record<string, unknown> | null;
   } | null;
+
+  let qualificacao = lerQualificacao(contact?.metadata);
+
+  // Servir o contexto é o momento em que a pergunta do topo da fila vai ser
+  // feita, então é aqui que ela conta como tentativa. Só em modo bot: com um
+  // humano na conversa ninguém está perguntando nada em nome do agente.
+  if (conversation.mode === "bot") {
+    const depois = registrarTentativa(qualificacao);
+    if (depois !== qualificacao) {
+      qualificacao = depois;
+      await db
+        .from("contacts")
+        .update({ metadata: { ...(contact?.metadata ?? {}), qualificacao } })
+        .eq("id", conversation.contact_id);
+    }
+  }
 
   return NextResponse.json({
     conversationId: conversation.id,
@@ -81,6 +99,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       name: contact?.display_name ?? contact?.profile_name ?? null,
       tags: contact?.tags ?? [],
     },
+    /** O que já foi apurado sobre esta pessoa, de conversas anteriores inclusive. */
+    qualificacao,
+    /** A fila de perguntas que sobrou, pronta para o prompt. Vazia quando não
+     *  falta nada — e aí o agente para de perguntar, sem depender de lembrar
+     *  o que perguntou. */
+    faltando: faltandoTexto(qualificacao),
     messages: historico.map((m) => ({
       de: ROTULO[m.author as keyof typeof ROTULO] ?? m.author,
       tipo: m.type,

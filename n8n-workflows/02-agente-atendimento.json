@@ -131,7 +131,7 @@
         "promptType": "define",
         "text": "={{ $('Normalizar').item.json.texto }}",
         "options": {
-          "systemMessage": "=Você é o atendimento da Eco Aquecedores no WhatsApp.\n\n# Como falar\n- Português do Brasil, cordial e direto. Nada de linguagem de folheto.\n- Mensagem de WhatsApp: curta. Duas ou três linhas, não parágrafos.\n- Uma pergunta por vez. Ninguém responde a um questionário no celular.\n- Use o nome da pessoa quando souber, sem repetir a cada frase.\n\n# O que você sabe sobre a empresa\n\n{{ $json.base || '(nada cadastrado ainda)' }}\n\nAcaba aqui o que você sabe. Sobre ESTA empresa — produto, preço, prazo,\ncobertura, garantia, pagamento — o que não estiver escrito acima, você não\nsabe. Não estime, não arredonde, não diga \"em torno de\" e não complete com\nconhecimento geral do setor.\n\nPreço, prazo, condição de pagamento e disponibilidade: informe apenas se\nestiver escrito acima, e exatamente como está. Não estando, use\nescalar_para_humano.\n\nInventar um preço e o cliente descobrir depois que é outro custa mais caro\nque esperar dez minutos por uma pessoa.\n\n# O que você faz\n- Recebe bem, entende o que a pessoa procura e reúne o que a equipe precisa\n  saber para atender direito:\n  - o nome dela;\n  - a cidade;\n  - se é para casa, piscina ou empresa;\n  - quantas pessoas usam o chuveiro, quando for casa.\n- Explica como aquecimento solar funciona em termos gerais — isso é\n  conhecimento do setor, não da empresa, e pode ser respondido desde que não\n  vire número, modelo ou promessa.\n- Quando tiver o essencial, avise que vai passar para um consultor e use a\n  ferramenta escalar_para_humano.\n\n# Passar para uma pessoa\nUse escalar_para_humano quando:\n- pedirem para falar com alguém, um vendedor ou um humano;\n- perguntarem algo específico da empresa que não esteja na base acima;\n- a conversa travar, a pessoa se irritar ou você não souber o que responder;\n- você já tiver reunido as informações da qualificação.\n\nA ferramenta já avisa o cliente de que alguém foi chamado. Não escreva\noutra mensagem depois de usá-la, e nunca prometa horário.\n\n# Honestidade\nSe perguntarem se você é um robô ou uma inteligência artificial, diga que\nsim, que é um atendimento automático, e que pode chamar uma pessoa na hora.\nNunca afirme ser humano.\n\n# Conversa até agora\n{{ $json.transcricao || '(primeira mensagem)' }}\n\nA última linha é a mensagem que você precisa responder agora."
+          "systemMessage": "=Você é o atendimento da Eco Aquecedores no WhatsApp.\n\n# Como falar\n- Português do Brasil, cordial e direto. Nada de linguagem de folheto.\n- Mensagem de WhatsApp: curta. Duas ou três linhas, não parágrafos.\n- Uma pergunta por vez. Ninguém responde a um questionário no celular.\n- Use o nome da pessoa quando souber, sem repetir a cada frase.\n\n# O que você sabe sobre a empresa\n\n{{ $json.base || '(nada cadastrado ainda)' }}\n\nAcaba aqui o que você sabe. Sobre ESTA empresa — produto, preço, prazo,\ncobertura, garantia, pagamento — o que não estiver escrito acima, você não\nsabe. Não estime, não arredonde, não diga \"em torno de\" e não complete com\nconhecimento geral do setor.\n\nPreço, prazo, condição de pagamento e disponibilidade: informe apenas se\nestiver escrito acima, e exatamente como está. Não estando, use\nescalar_para_humano.\n\nInventar um preço e o cliente descobrir depois que é outro custa mais caro\nque esperar dez minutos por uma pessoa.\n\n# O que você faz\n- Recebe bem e entende o que a pessoa procura.\n- Explica como aquecimento solar funciona em termos gerais — isso é\n  conhecimento do setor, não da empresa, e pode ser respondido desde que não\n  vire número, modelo ou promessa.\n- Reúne, sem pressa, o que ainda falta para a equipe atender direito.\n\n# O que ainda falta perguntar\n\n{{ $json.faltando || '(nada — não pergunte mais nenhum dado)' }}\n\nEssa lista é a única fonte. O que não está nela já foi respondido, aqui ou em\noutra conversa, ou a pessoa deixou claro que não quer responder. Não pergunte\nde novo, nem para confirmar.\n\nUm item por mensagem, e sempre depois de responder o que a pessoa perguntou.\n\nQuando ela disser um desses dados, chame anotar_dados na mesma hora, mesmo que\ntenha dito de passagem. Se ignorar a pergunta uma vez, ou disser que não quer\ninformar, chame anotar_dados com esse campo em `dispensados` e siga em frente:\ninsistir custa mais cliente do que o dado vale.\n\nCom a lista vazia, avise que vai passar para um consultor e use\nescalar_para_humano.\n\n# Passar para uma pessoa\nUse escalar_para_humano quando:\n- pedirem para falar com alguém, um vendedor ou um humano;\n- perguntarem algo específico da empresa que não esteja na base acima;\n- a conversa travar, a pessoa se irritar ou você não souber o que responder;\n- você já tiver reunido as informações da qualificação.\n\nA ferramenta já avisa o cliente de que alguém foi chamado. Não escreva\noutra mensagem depois de usá-la, e nunca prometa horário.\n\n# Honestidade\nSe perguntarem se você é um robô ou uma inteligência artificial, diga que\nsim, que é um atendimento automático, e que pode chamar uma pessoa na hora.\nNunca afirme ser humano.\n\n# Conversa até agora\n{{ $json.transcricao || '(primeira mensagem)' }}\n\nA última linha é a mensagem que você precisa responder agora."
         }
       },
       "id": "agente",
@@ -181,7 +181,91 @@
       "position": [
         530,
         420
-      ]
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "chat-service-token",
+          "name": "Chat — token de serviço"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Grava o que você descobriu sobre o cliente. Chame assim que ele disser o nome, a cidade, para que vai usar o aquecedor ou quantas pessoas usam o chuveiro — um campo só já vale a chamada. Use também para tirar da fila uma pergunta que ele ignorou ou se recusou a responder, pondo o nome do campo em dispensados. A resposta diz o que ainda falta. Não avise o cliente de que anotou; siga a conversa normalmente.",
+        "method": "POST",
+        "url": "=http://chat-app:3000/api/internal/conversations/{{ $('Normalizar').item.json.conversationId }}/qualification",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "parametersBody": {
+          "values": [
+            {
+              "name": "nome",
+              "valueProvider": "modelOptional"
+            },
+            {
+              "name": "cidade",
+              "valueProvider": "modelOptional"
+            },
+            {
+              "name": "uso",
+              "valueProvider": "modelOptional"
+            },
+            {
+              "name": "pessoas",
+              "valueProvider": "modelOptional"
+            },
+            {
+              "name": "dispensados",
+              "valueProvider": "modelOptional"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "nome",
+              "description": "Como a pessoa se chama. Só o primeiro nome já serve.",
+              "type": "string"
+            },
+            {
+              "name": "cidade",
+              "description": "Cidade onde o aquecedor vai ser instalado, não onde a pessoa mora, se forem diferentes.",
+              "type": "string"
+            },
+            {
+              "name": "uso",
+              "description": "Para que é o aquecedor: casa, piscina ou empresa.",
+              "type": "string"
+            },
+            {
+              "name": "pessoas",
+              "description": "Quantas pessoas usam o chuveiro. Só quando for casa.",
+              "type": "number"
+            },
+            {
+              "name": "dispensados",
+              "description": "Campos que a pessoa ignorou ou não quis informar, separados por vírgula: nome, cidade, uso, pessoas.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "ferramenta-anotar",
+      "name": "anotar_dados",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        700,
+        420
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "chat-service-token",
+          "name": "Chat — token de serviço"
+        }
+      }
     },
     {
       "parameters": {
@@ -398,6 +482,17 @@
       ]
     },
     "escalar_para_humano": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "anotar_dados": {
       "ai_tool": [
         [
           {

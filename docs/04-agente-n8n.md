@@ -70,9 +70,10 @@ Depois **Active** no canto superior direito. Workflow inativo não atende.
 
 Tanto o "Import from URL" quanto o `n8n import:workflow` descartam o vínculo
 das credenciais: os nós voltam sem nenhuma. Depois de qualquer reimportação,
-percorra os sete nós que precisam de credencial — `Mensagem recebida`,
+percorra os oito nós que precisam de credencial — `Mensagem recebida`,
 `Buscar contexto`, `Responder`, `Avisar que não leio áudio`,
-`Escalar (mídia)`, `escalar_para_humano` e `Claude` — e selecione de novo.
+`Escalar (mídia)`, `escalar_para_humano`, `anotar_dados` e `Claude` — e
+selecione de novo.
 O sintoma, quando falta, é `Credentials not found` no nó `escalar_para_humano`.
 
 O `import:workflow` também desativa o fluxo, e a reativação por linha de
@@ -126,6 +127,38 @@ Se o agente escalasse primeiro e falasse depois, a fala esbarraria na própria
 trava de handoff: o modo já seria `human`, `/api/internal/send` devolveria 409
 e o cliente ficaria sem resposta nenhuma — escalado em silêncio. O texto está
 no `jsonBody` do nó da ferramenta, e é lá que se edita.
+
+## A fila de perguntas não mora no prompt
+
+O agente qualifica — nome, cidade, casa ou piscina, quantas pessoas — mas a
+lista do que ainda falta **não** está escrita no System Message. Ela chega
+pronta em `{{ $json.faltando }}`, vinda de `Buscar contexto`.
+
+Por que assim: com a lista fixa no prompt, o agente relia a conversa a cada
+mensagem para adivinhar o que já tinha perguntado. Quando o cliente ignorava,
+o dado continuava faltando e a pergunta voltava idêntica — cinco vezes
+seguidas num teste de dez mensagens.
+
+Agora o dado respondido sai da fila de verdade:
+
+1. o cliente responde qualquer um dos quatro itens;
+2. o agente chama `anotar_dados`, que grava em
+   `chat.contacts.metadata.qualificacao`;
+3. no turno seguinte, `Buscar contexto` monta `faltando` sem aquele item.
+
+Quem ignora a pergunta também sai da fila, por dois caminhos: o agente manda o
+nome do campo em `dispensados`, ou o próprio contexto desiste. Cada vez que
+`Buscar contexto` entrega uma pergunta, ela conta como tentativa; passou de
+`LIMITE_TENTATIVAS` (duas) sem resposta, o campo é descartado sozinho.
+
+O contador existe porque "não repita" só funciona quando alguém conta, e o
+modelo não conta: ele relê a conversa, vê o dado faltando e pergunta de novo.
+
+Tudo isso vale para conversas futuras — a pessoa some por um mês, volta, e a
+cidade dela continua gravada.
+
+Mexer na lista de perguntas é mexer em `app/src/lib/qualificacao.ts`, não no
+prompt. O campo `pessoas` só entra na fila quando o uso é residência.
 
 ## Testar
 
