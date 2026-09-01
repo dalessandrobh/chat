@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Confirme seu e-mail</title>
+</head>
+<!--
+  Modelo do e-mail de confirmação de cadastro.
+
+  Servido pelo próprio painel em /email/confirmacao.html e apontado pela
+  variável GOTRUE_MAILER_TEMPLATES_CONFIRMATION do serviço de autenticação.
+
+  Estilo em atributo `style` de propósito: cliente de e-mail ignora folha
+  externa, e boa parte deles ignora a tag <style> também.
+
+  O GoTrue substitui: {{ .ConfirmationURL }}, {{ .Email }}, {{ .SiteURL }}.
+-->
+<body style="margin:0;padding:0;background:#f0f3f2;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0f3f2;padding:32px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;background:#ffffff;border:1px solid #dde4e3;border-radius:10px;">
+          <tr>
+            <td style="padding:28px 28px 8px;">
+              <p style="margin:0;font:600 12px/1 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#0a6a5e;">Chat</p>
+              <h1 style="margin:12px 0 0;font:700 23px/1.25 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#0f1e1c;">Confirme seu e-mail</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:12px 28px 0;">
+              <p style="margin:0;font:400 16px/1.6 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#3c4a48;">
+                Recebemos um cadastro no Chat com o endereço <strong style="color:#0f1e1c;">{{ .Email }}</strong>. Confirme para entrar e criar sua empresa.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 28px 0;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="background:#0a6a5e;border-radius:8px;">
+                    <a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:12px 22px;font:600 15px/1 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#ffffff;text-decoration:none;">Confirmar e-mail</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:22px 28px 28px;">
+              <p style="margin:0;font:400 13px/1.6 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#5a6b6a;">
+                Se o botão não abrir, copie este endereço no navegador:<br>
+                <span style="word-break:break-all;color:#0a6a5e;">{{ .ConfirmationURL }}</span>
+              </p>
+              <p style="margin:16px 0 0;font:400 13px/1.6 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#5a6b6a;">
+                Não foi você que se cadastrou? Ignore esta mensagem — sem a confirmação, a conta não é ativada.
+              </p>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:16px 0 0;font:400 12px/1.5 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#5a6b6a;">
+          <a href="{{ .SiteURL }}" style="color:#5a6b6a;">{{ .SiteURL }}</a>
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
