@@ -233,6 +233,31 @@ begin
   raise notice 'ok: só o servidor lê credencial, e lê a certa';
 end $$;
 
+\echo '=== ajuste de uma empresa não decide pela outra ==='
+
+-- A desliga a leitura de imagens; B nunca mexeu. Antes isto era uma linha só
+-- para todo mundo, e o servidor lia a de qualquer uma.
+insert into chat.settings (company_id, key, value)
+values ('11111111-1111-1111-1111-111111111111', 'ler_imagens', 'false'::jsonb);
+
+do $$
+declare v_a jsonb; v_b jsonb;
+begin
+  select value into v_a from chat.settings
+   where company_id = '11111111-1111-1111-1111-111111111111' and key = 'ler_imagens';
+  select value into v_b from chat.settings
+   where company_id = '22222222-2222-2222-2222-222222222222' and key = 'ler_imagens';
+
+  if v_a <> 'false'::jsonb then
+    raise exception 'FALHOU: o ajuste de A não ficou desligado';
+  end if;
+  if v_b is not null then
+    raise exception 'FALHOU: desligar em A criou ou mudou linha em B';
+  end if;
+
+  raise notice 'ok: ajuste é por empresa, e ausência não é desligado';
+end $$;
+
 \echo '=== cadastro de empresa ==='
 
 -- Quem já tem empresa não cria outra: senão o cadastro vira jeito de encher

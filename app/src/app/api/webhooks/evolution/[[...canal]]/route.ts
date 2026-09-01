@@ -251,7 +251,7 @@ async function tratarMidia(
   companyId: string,
   event: EvoInboundMessage
 ) {
-  const leitura = await entenderMidia(event, channelId);
+  const leitura = await entenderMidia(event, channelId, companyId);
 
   if (leitura.ok) {
     const db = supabaseAdmin();

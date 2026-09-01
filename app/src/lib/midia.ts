@@ -52,13 +52,15 @@ export type LeituraMidia =
 
 export async function entenderMidia(
   event: EvoInboundMessage,
-  channelId: string
+  channelId: string,
+  companyId: string
 ): Promise<LeituraMidia> {
   const ehImagem = event.type === "image" || event.type === "sticker";
   const ehAudio = event.type === "audio";
   const ehVideo = event.type === "video";
 
-  const leImagens = (ehImagem || ehVideo) && serverEnv.midia.leImagem && (await lerImagensLigado());
+  const leImagens =
+    (ehImagem || ehVideo) && serverEnv.midia.leImagem && (await lerImagensLigado(companyId));
 
   // Vídeo nunca é lido, com a chave ligada ou não — então sempre pergunta.
   if (ehVideo) return { ok: false, acao: "perguntar", leImagens };

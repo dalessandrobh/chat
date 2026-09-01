@@ -10,8 +10,6 @@
  * receberia a mesma frase duas vezes sem nada ter mudado para ele.
  */
 
-const EMPRESA = "Eco Aquecedores";
-
 /** Quando um atendente assume pelo painel. */
 export function mensagemAssumiu(nomeDoAgente: string | null): string {
   const inicio = "A partir de agora você está sendo atendido por um ser humano.";
@@ -22,7 +20,12 @@ export function mensagemAssumiu(nomeDoAgente: string | null): string {
     : inicio;
 }
 
-/** Quando o atendente devolve a conversa. */
-export function mensagemDevolveu(): string {
-  return `A partir de agora você está sendo atendido pelo atendimento automatizado da ${EMPRESA}.`;
+/**
+ * Quando o atendente devolve a conversa.
+ *
+ * O nome vem de quem chama, não de uma constante: com várias empresas no mesmo
+ * painel, um nome cravado aqui faria o cliente de uma ouvir o nome da outra.
+ */
+export function mensagemDevolveu(empresa: string): string {
+  return `A partir de agora você está sendo atendido pelo atendimento automatizado da ${empresa}.`;
 }

@@ -38,7 +38,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const { data: conversation } = await db
     .from("conversations")
     .select(
-      "id, mode, status, window_expires_at, contact_id, company_id, contacts(wa_id, profile_name, display_name, tags, metadata), channels(provider, name)"
+      "id, mode, status, window_expires_at, contact_id, company_id, companies(name), contacts(wa_id, profile_name, display_name, tags, metadata), channels(provider, name)"
     )
     .eq("id", id)
     .maybeSingle();
@@ -92,8 +92,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }
   }
 
+  const empresa =
+    (conversation.companies as unknown as { name: string } | null)?.name ?? "";
+
   return NextResponse.json({
     conversationId: conversation.id,
+    /**
+     * Nome da empresa dona da conversa. O prompt do agente monta a primeira
+     * frase com isto em vez de trazer o nome cravado: um nome fixo no prompt
+     * faria o cliente de uma empresa ser atendido em nome de outra.
+     */
+    empresa,
     /** Base de conhecimento ativa, já montada. Vazia enquanto ninguém ligar
      *  nenhuma seção — e aí o agente segue só com as regras do prompt. */
     base: (base as string | null) ?? "",

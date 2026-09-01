@@ -299,3 +299,31 @@ cliente é outra decisão e vai precisar de outra porta.
 
 Quem não é dono da plataforma é mandado para o inbox — não descobre que a tela
 existe.
+
+
+## Nada de identidade cravado no código
+
+O nome da empresa aparecia em três lugares, todos como texto fixo: o começo do
+prompt do agente, a despedida de quando o atendente devolve a conversa, e a
+constante `EMPRESA` em `lib/handoff-messages.ts`. Com várias empresas no mesmo
+painel, isso faria o cliente de uma ser atendido em nome de outra.
+
+Agora o nome vem do banco:
+
+- `/api/internal/conversations/:id/context` devolve `empresa`, e o prompt monta
+  a primeira frase com `{{ $json.empresa }}`;
+- a despedida recebe o nome de quem chama, junto da conversa.
+
+O resto da persona — tom, regras, o que pode e o que não pode dizer — continua
+na base de conhecimento, que já é por empresa. Não criei coluna para isso: seria
+duplicar o que a seção "Regras gerais" já faz.
+
+### Ajuste sem linha não é ajuste desligado
+
+`lib/ajustes.ts` lia `chat.settings` com a chave de serviço e **sem filtrar por
+empresa** — com duas, leria a linha de qualquer uma, ou quebraria por trazer
+duas. Agora filtra, e trata ausência como o padrão do ajuste: empresa que nunca
+mexeu em "ler imagens" tem a leitura **ligada**, não desligada.
+
+A gravação virou upsert pelo mesmo motivo: um `update` em empresa sem linha
+mudaria zero linhas em silêncio, e a tela diria "salvo".

@@ -59,11 +59,19 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Ajuste desconhecido" }, { status: 400 });
   }
 
+  // Upsert, não update: empresa que nunca mexeu no ajuste não tem linha, e um
+  // update mudaria zero linhas em silêncio — a tela diria "salvo" e nada teria
+  // mudado.
   const supabase = await supabaseServer();
-  const { error } = await supabase
-    .from("settings")
-    .update({ value: parsed.data.value, updated_by: agent.id })
-    .eq("key", parsed.data.key);
+  const { error } = await supabase.from("settings").upsert(
+    {
+      company_id: agent.company_id,
+      key: parsed.data.key,
+      value: parsed.data.value,
+      updated_by: agent.id,
+    },
+    { onConflict: "company_id,key" }
+  );
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

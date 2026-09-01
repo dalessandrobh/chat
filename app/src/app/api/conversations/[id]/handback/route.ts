@@ -29,9 +29,11 @@ export async function POST(
 
   const supabase = await supabaseServer();
 
+  // O nome da empresa vai junto: é o que o cliente ouve na despedida, e com
+  // várias no mesmo painel ele não pode ouvir o nome de outra.
   const { data: antes } = await supabase
     .from("conversations")
-    .select("mode")
+    .select("mode, companies(name)")
     .eq("id", id)
     .maybeSingle();
 
@@ -48,7 +50,10 @@ export async function POST(
   if (antes?.mode === "human") {
     const resultado = await sendTextMessage({
       conversationId: id,
-      text: mensagemDevolveu(),
+      text: mensagemDevolveu(
+        (antes as unknown as { companies: { name: string } | null }).companies?.name ??
+          "nossa equipe"
+      ),
       author: "bot",
     });
     if (!resultado.ok) {
