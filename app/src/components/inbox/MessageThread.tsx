@@ -58,12 +58,83 @@ const ICONE_MIDIA: Record<string, string> = {
  */
 function rotuloMidia(message: Message) {
   const icone = ICONE_MIDIA[message.type] ?? "📎";
-  const tipo = String(message.media?.mimeType ?? message.type);
+  const tipo = message.media_mime ?? message.type;
 
   if (!message.body) return `${icone} ${tipo}`;
   return message.type === "audio"
     ? `${icone} áudio — transcrito automaticamente`
     : `${icone} ${tipo} — descrição automática`;
+}
+
+function duracao(segundos: number | null) {
+  if (!segundos) return null;
+  const m = Math.floor(segundos / 60);
+  const s = segundos % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/**
+ * O arquivo em si.
+ *
+ * Sempre esteve no banco — a Evolution manda o base64 junto do evento — e o
+ * painel nunca mostrou. Quem atendia lia "📷 image/jpeg" e a descrição que o
+ * modelo escreveu, e respondia sobre uma foto que não podia abrir. Numa
+ * conversa de aquecedor a foto costuma ser o telhado, a caixa d'água ou a
+ * placa do concorrente: é o conteúdo da mensagem, não um anexo dela.
+ *
+ * A bolha pede os bytes ao abrir, um por vez, em vez de a lista inteira vir
+ * carregada. `preload="metadata"` no vídeo é a mesma ideia: baixa o
+ * suficiente para ter primeiro quadro e duração, e o resto só se alguém der
+ * play.
+ */
+function Anexo({ message }: { message: Message }) {
+  const src = `/api/messages/${message.id}/media`;
+  const tipo = message.media_mime ?? "";
+  const tempo = duracao(message.media_seconds);
+
+  if (tipo.startsWith("image/")) {
+    return (
+      /* Abre em aba nova no tamanho original: no celular do cliente a foto
+         tem detalhe que não cabe na largura da bolha. */
+      <a href={src} target="_blank" rel="noopener noreferrer" className="mt-1 block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={message.body ?? "Imagem recebida"}
+          loading="lazy"
+          className="max-h-72 w-auto rounded-lg"
+        />
+      </a>
+    );
+  }
+
+  if (tipo.startsWith("video/")) {
+    return (
+      <video
+        src={src}
+        controls
+        preload="metadata"
+        className="mt-1 max-h-72 w-full rounded-lg"
+      />
+    );
+  }
+
+  if (tipo.startsWith("audio/")) {
+    return <audio src={src} controls preload="metadata" className="mt-1 w-full" />;
+  }
+
+  return (
+    <a
+      href={src}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-1 flex items-center gap-2 rounded-lg border border-black/10 px-2 py-1.5 text-sm hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/5"
+    >
+      <span>{ICONE_MIDIA[message.type] ?? "\u{1F4CE}"}</span>
+      <span className="truncate">{message.media_filename ?? "abrir arquivo"}</span>
+      {tempo && <span className="opacity-60">{tempo}</span>}
+    </a>
+  );
 }
 
 function Bubble({ message, contactName }: { message: Message; contactName: string }) {
@@ -83,8 +154,9 @@ function Bubble({ message, contactName }: { message: Message; contactName: strin
       >
         <AuthorTag message={message} contactName={contactName} />
 
-        {message.media ? (
+        {message.media_mime || message.has_media ? (
           <>
+            {message.has_media && <Anexo message={message} />}
             <p className="text-[11px] italic opacity-60">{rotuloMidia(message)}</p>
             {message.body && (
               <p className="whitespace-pre-wrap break-words text-sm">{message.body}</p>

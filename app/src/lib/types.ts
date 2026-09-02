@@ -35,8 +35,15 @@ export interface Message {
   wa_message_id: string | null;
   type: string;
   body: string | null;
-  payload: Record<string, unknown>;
-  media: Record<string, unknown> | null;
+  /**
+   * A mídia é descrita, não carregada. Os bytes ficam no banco e chegam por
+   * /api/messages/:id/media quando a bolha for desenhada — antes o painel
+   * baixava o base64 de toda a conversa para exibir um ícone.
+   */
+  has_media: boolean;
+  media_mime: string | null;
+  media_filename: string | null;
+  media_seconds: number | null;
   status: MessageStatus;
   error: Record<string, unknown> | null;
   author: MessageAuthor;

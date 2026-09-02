@@ -41,9 +41,17 @@ export function InboxClient({
     async (conversationId: string) => {
       const { data } = await supabase
         .from("messages")
-        // O nome vem junto: sem ele toda resposta da equipe aparece como
-        // "você", inclusive a que outra pessoa mandou ontem.
-        .select("*, agent:agents(full_name)")
+        // Colunas na mão, e não `*`, por causa de duas: `media` guarda o
+        // arquivo inteiro em base64 e `payload` guarda o evento cru. Com `*`
+        // uma conversa com um vídeo baixava megabytes para o navegador só
+        // para desenhar a bolha. O que descreve a mídia vem nas colunas
+        // geradas; os bytes, só quando a bolha os pedir.
+        //
+        // O nome do agente vem junto: sem ele toda resposta da equipe aparece
+        // como "você", inclusive a que outra pessoa mandou ontem.
+        .select(
+          "id, conversation_id, direction, wa_message_id, type, body, has_media, media_mime, media_filename, media_seconds, status, error, author, agent_id, template_id, created_at, agent:agents(full_name)"
+        )
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true })
         .limit(300);
