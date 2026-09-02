@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 
 interface Empresa {
   company_id: string;
@@ -48,7 +49,12 @@ export function PlataformaClient() {
 
   return (
     <div className="mx-auto max-w-5xl p-6">
-      <h1 className="text-xl font-semibold">Plataforma</h1>
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h1 className="text-xl font-semibold">Plataforma</h1>
+        <Link href="/inbox" className="text-sm underline" style={{ color: "var(--muted)" }}>
+          voltar ao painel
+        </Link>
+      </div>
       <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
         Todas as empresas atendidas por esta instalação. Medida, não conteúdo —
         conversa de cliente não se lê por aqui.

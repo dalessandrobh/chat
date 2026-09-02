@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { SairButton } from "@/components/auth/SairButton";
 
 /**
  * Primeira tela de quem acabou de se cadastrar. Substitui o "acesso pendente"
@@ -66,6 +67,12 @@ export function ComecarClient({ email }: { email: string }) {
           Se você foi convidado por alguém, não crie empresa aqui: peça para a
           pessoa liberar seu acesso em Usuários.
         </p>
+
+        {/* Esta tela não tem o cabeçalho do painel: sem isto, quem chegou aqui
+            por engano não teria como sair da conta. */}
+        <div className="mt-6">
+          <SairButton />
+        </div>
       </div>
     </main>
   );

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
 import { canManageKnowledge, canManageTemplates, canManageUsers, roleLabel } from "@/lib/roles";
+import { SairButton } from "@/components/auth/SairButton";
 
 export default async function PainelLayout({
   children,
@@ -113,6 +114,7 @@ export default async function PainelLayout({
           <span>
             {agent.full_name ?? agent.email} · {roleLabel(agent.role)}
           </span>
+          <SairButton />
         </span>
       </header>
 
