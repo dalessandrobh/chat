@@ -109,14 +109,27 @@ export const serverEnv = {
     /** Descrever imagem. É a mesma chave do console.anthropic.com que o n8n usa. */
     anthropicKey: optional("ANTHROPIC_API_KEY"),
     modeloImagem: optional("ANTHROPIC_MODEL_IMAGEM", "claude-opus-5"),
-    /** Transcrever áudio. Conta separada — a Anthropic não recebe áudio. */
-    openaiKey: optional("OPENAI_API_KEY"),
-    modeloAudio: optional("OPENAI_MODEL_AUDIO", "whisper-1"),
+    /**
+     * Transcrever áudio. Conta separada — a Anthropic não recebe áudio.
+     *
+     * O endereço é configurável porque a API de transcrição da OpenAI virou
+     * um formato: Groq e outros expõem a mesma rota, o mesmo formulário e a
+     * mesma resposta. Trocar de provedor é trocar duas variáveis, não código.
+     *
+     * O padrão é a Groq, que tem plano gratuito com folga larga para o
+     * volume de um WhatsApp de atendimento.
+     */
+    audioKey: optional("AUDIO_API_KEY"),
+    audioUrl: optional(
+      "AUDIO_API_URL",
+      "https://api.groq.com/openai/v1/audio/transcriptions"
+    ),
+    modeloAudio: optional("AUDIO_MODEL", "whisper-large-v3-turbo"),
     get leImagem() {
       return isSet("ANTHROPIC_API_KEY");
     },
     get leAudio() {
-      return isSet("OPENAI_API_KEY");
+      return isSet("AUDIO_API_KEY");
     },
   },
 } as const;

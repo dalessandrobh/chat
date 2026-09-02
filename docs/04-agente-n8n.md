@@ -139,7 +139,7 @@ Agora o painel lê a mídia **antes** de acionar o bot:
 | Tipo | Como | Chave |
 |---|---|---|
 | Imagem, figurinha | Claude, pela Messages API | `ANTHROPIC_API_KEY` |
-| Áudio | Whisper | `OPENAI_API_KEY` |
+| Áudio | Whisper | `AUDIO_API_KEY` |
 | Vídeo, documento | ninguém — segue para uma pessoa | — |
 
 O texto entendido é gravado no `body` da própria mensagem. Daí em diante nada
@@ -316,3 +316,25 @@ LLM merece leitura antes de virar o que o agente afirma ao cliente.
 O arquivo cita o teto recomendado: **12.000 caracteres ligados**, cerca de
 3.200 tokens, ~US$ 0,006 por mensagem, ~US$ 6 a cada mil. Seção desligada não
 custa nada.
+
+### Quem transcreve o áudio é configurável
+
+A rota de transcrição da OpenAI virou um formato: Groq e outros expõem o mesmo
+caminho, o mesmo formulário e a mesma resposta. Por isso o endereço não está
+cravado no código.
+
+    AUDIO_API_KEY   a chave do provedor — sem ela, áudio vai para uma pessoa
+    AUDIO_API_URL   padrão: https://api.groq.com/openai/v1/audio/transcriptions
+    AUDIO_MODEL     padrão: whisper-large-v3-turbo
+
+O padrão é a Groq porque o plano gratuito dela cobre com folga o volume de um
+WhatsApp de atendimento — 2.000 requisições e 8 horas de áudio por dia — e roda
+o Whisper large v3, que é maior que o `whisper-1` cobrado pela OpenAI.
+
+Para trocar de provedor, duas linhas no `.env` e um restart:
+
+    AUDIO_API_URL=https://api.openai.com/v1/audio/transcriptions
+    AUDIO_MODEL=gpt-transcribe
+
+Gratuito hoje não é contrato. A variável existe para o dia em que a política
+mudar ser um restart, e não uma refatoração.

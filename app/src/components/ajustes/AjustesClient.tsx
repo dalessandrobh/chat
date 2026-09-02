@@ -281,8 +281,8 @@ export function AjustesClient() {
           </div>
           <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
             {ajustes.temChaveAudio
-              ? "Áudio vira texto e o bot responde. Depende de OPENAI_API_KEY, e é por lá que se desliga."
-              : "Falta OPENAI_API_KEY no painel. Sem ela, todo áudio vai para um atendente."}
+              ? "Áudio vira texto e o bot responde. Depende de AUDIO_API_KEY, e é por lá que se desliga."
+              : "Falta AUDIO_API_KEY no painel. Sem ela, todo áudio vai para um atendente."}
           </p>
         </div>
       )}

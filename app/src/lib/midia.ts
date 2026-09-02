@@ -148,9 +148,9 @@ async function transcreverAudio(base64: string, mimeType: string): Promise<strin
   // ruído de rua ele às vezes decide que é espanhol.
   form.append("language", "pt");
 
-  const resposta = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+  const resposta = await fetch(serverEnv.midia.audioUrl, {
     method: "POST",
-    headers: { Authorization: `Bearer ${serverEnv.midia.openaiKey}` },
+    headers: { Authorization: `Bearer ${serverEnv.midia.audioKey}` },
     body: form,
     signal: AbortSignal.timeout(60_000),
   });
