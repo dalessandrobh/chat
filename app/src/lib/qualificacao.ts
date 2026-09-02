@@ -67,6 +67,35 @@ export function lerQualificacao(metadata: unknown): Qualificacao {
   return bruto as Qualificacao;
 }
 
+/**
+ * O WhatsApp entrega o nome do perfil junto de toda mensagem. Perguntar "como
+ * você se chama?" para quem chegou identificado faz o atendimento parecer um
+ * formulário — a pessoa sabe que o nome dela aparece do outro lado, ela mesma
+ * escolheu esse nome.
+ *
+ * Então o nome do perfil entra na qualificação como resposta: sai da fila e
+ * chega ao agente para ser usado. Quem se apresentar com outro nome depois
+ * grava por cima pelo `anotar_dados` — o nome que a pessoa diz vence o do
+ * perfil, que às vezes é um apelido ou o nome da loja.
+ */
+export function comNomeDoPerfil(
+  q: Qualificacao,
+  perfil: string | null | undefined
+): Qualificacao {
+  if (q.nome != null) return q;
+  const nome = (perfil ?? "").trim();
+  // Perfil sem nome chega vazio, ou com o próprio número. Nenhum dos dois
+  // serve para chamar alguém: aí a pergunta continua valendo.
+  if (nome.length < 2 || !/\p{L}/u.test(nome)) return q;
+  return { ...q, nome };
+}
+
+/** Como chamar a pessoa numa frase. "Mary Queiroz" vira "Mary": ninguém é
+ *  chamado pelo nome completo no WhatsApp. */
+export function primeiroNome(nome: string | null | undefined): string {
+  return (nome ?? "").trim().split(/\s+/)[0] ?? "";
+}
+
 /** O que ainda cabe perguntar, na ordem em que faz sentido perguntar. */
 export function faltando(q: Qualificacao): { chave: CampoQualificacao; pergunta: string }[] {
   const dispensados = new Set(q.dispensados ?? []);

@@ -14,7 +14,13 @@
 import { NextResponse } from "next/server";
 import { hasServiceToken } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { faltandoTexto, lerQualificacao, registrarTentativa } from "@/lib/qualificacao";
+import {
+  comNomeDoPerfil,
+  faltandoTexto,
+  lerQualificacao,
+  primeiroNome,
+  registrarTentativa,
+} from "@/lib/qualificacao";
 
 /** Teto de mensagens no contexto. Conversa de WhatsApp é longa e picotada;
  *  as 40 últimas cobrem o assunto atual sem inflar o prompt. */
@@ -76,20 +82,30 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     metadata: Record<string, unknown> | null;
   } | null;
 
-  let qualificacao = lerQualificacao(contact?.metadata);
+  const gravada = lerQualificacao(contact?.metadata);
+
+  // O nome do perfil vira resposta antes de a fila ser montada. Sem isto
+  // "nome" continua pendente e o agente abre a conversa perguntando como a
+  // pessoa se chama — com o nome dela impresso na própria mensagem que
+  // acabou de chegar.
+  let qualificacao = comNomeDoPerfil(
+    gravada,
+    contact?.display_name ?? contact?.profile_name
+  );
 
   // Servir o contexto é o momento em que a pergunta do topo da fila vai ser
   // feita, então é aqui que ela conta como tentativa. Só em modo bot: com um
   // humano na conversa ninguém está perguntando nada em nome do agente.
   if (conversation.mode === "bot") {
-    const depois = registrarTentativa(qualificacao);
-    if (depois !== qualificacao) {
-      qualificacao = depois;
-      await db
-        .from("contacts")
-        .update({ metadata: { ...(contact?.metadata ?? {}), qualificacao } })
-        .eq("id", conversation.contact_id);
-    }
+    qualificacao = registrarTentativa(qualificacao);
+  }
+
+  // Uma escrita só, cobrindo o nome que veio do perfil e a tentativa contada.
+  if (qualificacao !== gravada) {
+    await db
+      .from("contacts")
+      .update({ metadata: { ...(contact?.metadata ?? {}), qualificacao } })
+      .eq("id", conversation.contact_id);
   }
 
   const empresa =
@@ -112,6 +128,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     contact: {
       waId: contact?.wa_id ?? null,
       name: contact?.display_name ?? contact?.profile_name ?? null,
+      /** Como o agente chama a pessoa na frase. Vazio quando o perfil não
+       *  trouxe nome — e aí perguntar volta a fazer sentido. */
+      primeiroNome: primeiroNome(qualificacao.nome),
       tags: contact?.tags ?? [],
     },
     /** O que já foi apurado sobre esta pessoa, de conversas anteriores inclusive. */
