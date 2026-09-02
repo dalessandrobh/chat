@@ -233,6 +233,37 @@ begin
   raise notice 'ok: só o servidor lê credencial, e lê a certa';
 end $$;
 
+\echo '=== a tela de Empresa só alcança a própria ==='
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111aa","role":"authenticated"}';
+do $$
+declare v_nome text;
+begin
+  -- A rota consulta sem filtro por id: quem limita é a regra de acesso.
+  select name into v_nome from chat.companies;
+  if v_nome <> 'Empresa Fantasma A' then
+    raise exception 'FALHOU: a consulta sem filtro trouxe outra empresa (%)', v_nome;
+  end if;
+
+  -- Renomear a outra não pode alcançar linha nenhuma.
+  update chat.companies set name = 'Invadida' where id = '22222222-2222-2222-2222-222222222222';
+  if exists (select 1 from chat.companies where name = 'Invadida') then
+    raise exception 'FALHOU: A renomeou a empresa de B';
+  end if;
+
+  raise notice 'ok: a tela de Empresa não alcança a empresa de outro';
+end $$;
+reset role;
+
+do $$
+begin
+  if (select name from chat.companies where id = '22222222-2222-2222-2222-222222222222') <> 'Empresa Fantasma B' then
+    raise exception 'FALHOU: o nome de B mudou apesar da política';
+  end if;
+  raise notice 'ok: o nome de B ficou intacto';
+end $$;
+
 \echo '=== ajuste de uma empresa não decide pela outra ==='
 
 -- A desliga a leitura de imagens; B nunca mexeu. Antes isto era uma linha só

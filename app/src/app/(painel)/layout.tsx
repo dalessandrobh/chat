@@ -43,13 +43,29 @@ export default async function PainelLayout({
 
   const { data: ehDonoPlataforma } = await supabase.rpc("is_platform_owner");
 
+  // Qual empresa está aberta. Com uma por pessoa isso raramente muda, mas
+  // quem opera a plataforma entra na conta de clientes para dar suporte — e
+  // não saber de quem é o inbox é como se responde pela empresa errada.
+  const { data: empresa } = await supabase.from("companies").select("name").maybeSingle();
+
   return (
     <div className="flex h-screen flex-col">
       <header
         className="flex shrink-0 items-center gap-6 border-b px-5 py-3"
         style={{ borderColor: "var(--border)", background: "var(--panel)" }}
       >
-        <span className="text-sm font-semibold">Chat</span>
+        <Link href="/empresa" className="flex min-w-0 items-baseline gap-2">
+          <span className="text-sm font-semibold">Chat</span>
+          {empresa?.name && (
+            <span
+              className="truncate text-sm"
+              style={{ color: "var(--muted)" }}
+              title={empresa.name}
+            >
+              {empresa.name}
+            </span>
+          )}
+        </Link>
 
         <nav className="flex gap-4 text-sm">
           <Link href="/inbox" className="hover:underline">
