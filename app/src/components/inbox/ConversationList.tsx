@@ -44,12 +44,18 @@ export function ConversationList({
   onSelect,
   filter,
   onFilterChange,
+  encerradas,
+  mostrarEncerradas,
+  onMostrarEncerradas,
 }: {
   rows: InboxRow[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   filter: string;
   onFilterChange: (value: string) => void;
+  encerradas: number;
+  mostrarEncerradas: boolean;
+  onMostrarEncerradas: (v: boolean) => void;
 }) {
   return (
     <aside
@@ -86,7 +92,13 @@ export function ConversationList({
             >
               <div className="flex items-center gap-2">
                 <span className="truncate text-sm font-medium">{row.contact_name}</span>
-                <ModeBadge row={row} />
+                {row.status === "closed" ? (
+                  <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                    Encerrada
+                  </span>
+                ) : (
+                  <ModeBadge row={row} />
+                )}
                 <span className="ml-auto shrink-0 text-[11px]" style={{ color: "var(--muted)" }}>
                   {relativeTime(row.last_message_at)}
                 </span>

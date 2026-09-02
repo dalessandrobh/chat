@@ -47,7 +47,26 @@ export function HandoffBar({
     }
   }
 
+  /** Encerrar e reabrir usam outro método na mesma rota. */
+  async function encerrarOuReabrir() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/conversations/${row.conversation_id}/close`, {
+        method: encerrada ? "DELETE" : "POST",
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error ?? "Falha na operação");
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const isHuman = row.mode === "human";
+  const encerrada = row.status === "closed";
 
   return (
     <div

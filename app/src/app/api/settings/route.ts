@@ -14,10 +14,13 @@ import { canManageKnowledge } from "@/lib/roles";
 import { AJUSTES } from "@/lib/ajustes";
 import { serverEnv } from "@/lib/env";
 
-const patchSchema = z.object({
-  key: z.enum([AJUSTES.lerImagens]),
-  value: z.boolean(),
-});
+const patchSchema = z.discriminatedUnion("key", [
+  z.object({ key: z.literal(AJUSTES.lerImagens), value: z.boolean() }),
+  // Zero é o desligado: prazo sem número não é prazo, e nulo obrigaria a tela
+  // a distinguir "vazio" de "nunca mexeram".
+  z.object({ key: z.literal(AJUSTES.devolverAoBot), value: z.number().int().min(0).max(43200) }),
+  z.object({ key: z.literal(AJUSTES.encerrarApos), value: z.number().int().min(0).max(43200) }),
+]);
 
 export async function GET() {
   const agent = await currentAgent();
@@ -30,9 +33,16 @@ export async function GET() {
 
   const porChave = Object.fromEntries((data ?? []).map((a) => [a.key, a]));
 
+  const numero = (chave: string) => {
+    const v = porChave[chave]?.value;
+    return typeof v === "number" ? v : 0;
+  };
+
   return NextResponse.json({
     lerImagens: porChave[AJUSTES.lerImagens]?.value !== false,
     atualizadoEm: porChave[AJUSTES.lerImagens]?.updated_at ?? null,
+    devolverAoBot: numero(AJUSTES.devolverAoBot),
+    encerrarApos: numero(AJUSTES.encerrarApos),
     /**
      * Sem a chave da Anthropic o ajuste não tem efeito nenhum, e a tela
      * precisa dizer isso — senão o gestor liga a chave, nada muda e a

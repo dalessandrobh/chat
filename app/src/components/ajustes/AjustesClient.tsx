@@ -4,9 +4,79 @@ import { useCallback, useEffect, useState } from "react";
 
 interface Ajustes {
   lerImagens: boolean;
+  devolverAoBot: number;
+  encerrarApos: number;
   atualizadoEm: string | null;
   temChaveImagem: boolean;
   temChaveAudio: boolean;
+}
+
+/** Um prazo em minutos, com o resumo em horas para não obrigar ninguém a dividir. */
+function Prazo({
+  titulo,
+  explicacao,
+  valor,
+  sugestao,
+  disabled,
+  onSalvar,
+}: {
+  titulo: string;
+  explicacao: string;
+  valor: number;
+  sugestao: number;
+  disabled?: boolean;
+  onSalvar: (v: number) => void;
+}) {
+  const [texto, setTexto] = useState(String(valor));
+
+  useEffect(() => {
+    setTexto(String(valor));
+  }, [valor]);
+
+  const n = Number(texto);
+  const valido = Number.isInteger(n) && n >= 0 && n <= 43200;
+  const mudou = valido && n !== valor;
+
+  return (
+    <div className="mt-4 border-t pt-4 first:mt-3 first:border-t-0 first:pt-0" style={{ borderColor: "var(--border)" }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium">{titulo}</span>
+        <input
+          value={texto}
+          onChange={(e) => setTexto(e.target.value.replace(/[^0-9]/g, ""))}
+          inputMode="numeric"
+          className="w-24 rounded-lg border px-2 py-1 text-right text-sm tabular-nums"
+          style={{ background: "var(--bg)", borderColor: "var(--border)" }}
+        />
+        <span className="text-sm" style={{ color: "var(--muted)" }}>
+          minutos
+          {valido && n > 0 && n >= 60 && ` · ${(n / 60).toFixed(n % 60 ? 1 : 0)} h`}
+          {valido && n === 0 && " · desligado"}
+        </span>
+        {mudou && (
+          <button
+            onClick={() => onSalvar(n)}
+            disabled={disabled}
+            className="rounded-lg bg-wa-teal px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
+          >
+            Salvar
+          </button>
+        )}
+        {valor === 0 && !mudou && (
+          <button
+            onClick={() => setTexto(String(sugestao))}
+            className="text-sm underline"
+            style={{ color: "var(--muted)" }}
+          >
+            sugerir {sugestao} min
+          </button>
+        )}
+      </div>
+      <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
+        {explicacao}
+      </p>
+    </div>
+  );
 }
 
 export function AjustesClient() {
@@ -38,6 +108,19 @@ export function AjustesClient() {
       body: JSON.stringify({ key: "ler_imagens", value: valor }),
     });
 
+    if (!r.ok) setErro((await r.json()).error);
+    await refresh();
+    setSalvando(false);
+  }
+
+  async function salvarPrazo(key: "devolver_ao_bot_minutos" | "encerrar_apos_minutos", valor: number) {
+    setErro(null);
+    setSalvando(true);
+    const r = await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, value: valor }),
+    });
     if (!r.ok) setErro((await r.json()).error);
     await refresh();
     setSalvando(false);
@@ -135,6 +218,47 @@ export function AjustesClient() {
               })}
             </p>
           )}
+        </div>
+      )}
+
+      {ajustes && (
+        <div
+          className="mt-4 rounded-lg border p-4"
+          style={{ background: "var(--panel)", borderColor: "var(--border)" }}
+        >
+          <p className="font-medium">Prazos da conversa</p>
+          <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
+            Zero desliga. Nada disso é visível para o cliente: encerrar é
+            arquivar, e a conversa reabre sozinha se ele voltar a escrever.
+          </p>
+
+          <Prazo
+            titulo="Devolver ao bot"
+            explicacao="Minutos parados em atendimento humano até a conversa voltar para o bot. Ele avisa o cliente ao assumir de novo — alguém pediu uma pessoa, e voltar calado é pior do que dizer."
+            valor={ajustes.devolverAoBot}
+            sugestao={30}
+            disabled={salvando}
+            onSalvar={(v) => void salvarPrazo("devolver_ao_bot_minutos", v)}
+          />
+
+          <Prazo
+            titulo="Encerrar por inatividade"
+            explicacao="Minutos sem ninguém falar até a conversa sair da lista. Não avisa nada ao cliente."
+            valor={ajustes.encerrarApos}
+            sugestao={2880}
+            disabled={salvando}
+            onSalvar={(v) => void salvarPrazo("encerrar_apos_minutos", v)}
+          />
+
+          {ajustes.devolverAoBot > 0 &&
+            ajustes.encerrarApos > 0 &&
+            ajustes.encerrarApos <= ajustes.devolverAoBot && (
+              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
+                O prazo de encerrar está menor ou igual ao de devolver: a
+                conversa vai ser arquivada antes de voltar ao bot, e a devolução
+                nunca acontece.
+              </p>
+            )}
         </div>
       )}
 

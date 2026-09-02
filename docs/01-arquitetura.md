@@ -327,3 +327,54 @@ mexeu em "ler imagens" tem a leitura **ligada**, não desligada.
 
 A gravação virou upsert pelo mesmo motivo: um `update` em empresa sem linha
 mudaria zero linhas em silêncio, e a tela diria "salvo".
+
+
+## Prazos da conversa
+
+Dois relógios por empresa, em Ajustes, ambos **desligados por padrão** — ligar
+um relógio que mexe em conversa de cliente sem alguém ter pedido é pior do que
+não ter o relógio.
+
+| Ajuste | O que faz | Avisa o cliente? |
+|---|---|---|
+| Devolver ao bot | minutos parados em atendimento humano até voltar para o bot | **sim** |
+| Encerrar por inatividade | minutos sem ninguém falar até sair da lista | não |
+
+A devolução avisa porque alguém pediu uma pessoa e ninguém veio: voltar ao robô
+calado é pior do que dizer. O encerramento não avisa porque é arquivo interno —
+"encerramos seu atendimento" às três da manhã transforma faxina em notificação.
+
+### Encerrar é arquivar, não terminar
+
+O gatilho `sync_conversation_on_message` reabre a conversa quando o contato
+volta a escrever. Isso vale desde o primeiro dia e é o que torna a ação segura:
+no pior caso a pessoa escreve de novo e tudo volta.
+
+Por isso o cliente **não** tem um comando de encerrar, e não deve ter: ele já
+tem o gesto natural, que é parar de escrever — e é justamente isso que o
+relógio lê.
+
+### Fechar sem sair de `human` seria uma armadilha
+
+Encerrar também devolve a conversa ao bot, mesmo quando o prazo de devolução
+não correu. Sem isso: a conversa fecha em modo humano, o contato escreve, o
+gatilho reabre — e o bot continua calado, porque o modo é `human`. Ninguém
+responde e nada aparece como erro.
+
+`close_conversation` e o relógio fazem os dois movimentos juntos, e o teste de
+isolamento afirma que nenhuma conversa termina fechada em modo humano.
+
+### `pending` depois de voltar ao bot
+
+`pending` quer dizer "esperando atendente". Devolvida ao bot, a conversa não
+espera mais ninguém — ficar assim a manteria marcada como fila na tela sem
+estar em fila nenhuma. A devolução automática **e** a manual passam a voltar
+para `open`; a manual tinha esse defeito desde a Fase 1.
+
+### O que existia e nunca rodou
+
+`chat.auto_hand_back_expired()` está no projeto desde a primeira migração e
+nenhuma linha de código a chama. Ela depende de `bot_resume_at`, preenchido só
+quando alguém assume a conversa escolhendo prazo no seletor — o campo estava
+nulo nas onze conversas. Continua ali para o prazo por conversa; o relógio novo
+é o prazo da empresa, que vale para toda conversa parada.

@@ -19,6 +19,12 @@ const PASSO_MS = 15_000;
  */
 const PASSO_LOTE_MS = 2_000;
 
+/**
+ * Os prazos de conversa são de minutos: olhar de minuto em minuto já dá uma
+ * precisão muito maior do que a decisão que eles tomam.
+ */
+const PASSO_PRAZOS_MS = 60_000;
+
 export async function register() {
   // O instrumentation também é carregado no runtime edge, onde nada disto faz
   // sentido.
@@ -26,6 +32,7 @@ export async function register() {
 
   const { tick } = await import("@/lib/campaigns");
   const { despacharTurnosVencidos } = await import("@/lib/bot-queue");
+  const { aplicarPrazos } = await import("@/lib/prazos");
 
   let rodando = false;
 
@@ -60,4 +67,20 @@ export async function register() {
   }, PASSO_LOTE_MS);
 
   console.log(`[lote] relógio dos turnos ativo, passo de ${PASSO_LOTE_MS / 1000}s`);
+
+  let aplicandoPrazos = false;
+
+  setInterval(async () => {
+    if (aplicandoPrazos) return;
+    aplicandoPrazos = true;
+    try {
+      await aplicarPrazos();
+    } catch (err) {
+      console.error("[prazos] relógio falhou", err);
+    } finally {
+      aplicandoPrazos = false;
+    }
+  }, PASSO_PRAZOS_MS);
+
+  console.log(`[prazos] relógio ativo, passo de ${PASSO_PRAZOS_MS / 1000}s`);
 }

@@ -21,6 +21,8 @@ export function InboxClient({
   );
   const [messages, setMessages] = useState<Message[]>([]);
   const [filter, setFilter] = useState("");
+  /** Encerradas ficam de fora por padrão: a lista é a fila de trabalho, não o arquivo. */
+  const [mostrarEncerradas, setMostrarEncerradas] = useState(false);
 
   const supabase = supabaseBrowser();
 
@@ -115,12 +117,17 @@ export function InboxClient({
 
   const filtered = useMemo(() => {
     const term = filter.trim().toLowerCase();
-    if (!term) return rows;
-    return rows.filter(
+    // A busca alcança o arquivo: quem procura por nome quer achar mesmo que a
+    // conversa já tenha sido encerrada.
+    const base = mostrarEncerradas || term ? rows : rows.filter((r) => r.status !== "closed");
+    if (!term) return base;
+    return base.filter(
       (r) =>
         r.contact_name.toLowerCase().includes(term) || r.wa_id.includes(term)
     );
-  }, [rows, filter]);
+  }, [rows, filter, mostrarEncerradas]);
+
+  const encerradas = useMemo(() => rows.filter((r) => r.status === "closed").length, [rows]);
 
   const selected = rows.find((r) => r.conversation_id === selectedId) ?? null;
 
@@ -139,6 +146,9 @@ export function InboxClient({
         onSelect={setSelectedId}
         filter={filter}
         onFilterChange={setFilter}
+        encerradas={encerradas}
+        mostrarEncerradas={mostrarEncerradas}
+        onMostrarEncerradas={setMostrarEncerradas}
       />
 
       <section className="flex min-w-0 flex-1 flex-col">

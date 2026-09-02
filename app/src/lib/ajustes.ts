@@ -11,12 +11,22 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const AJUSTES = {
   lerImagens: "ler_imagens",
+  /** Minutos parados em atendimento humano até a conversa voltar ao bot. */
+  devolverAoBot: "devolver_ao_bot_minutos",
+  /** Minutos sem ninguém falar até a conversa ser arquivada. */
+  encerrarApos: "encerrar_apos_minutos",
 } as const;
 
 /** Como cada ajuste se comporta quando a empresa nunca mexeu nele. */
 const PADRAO: Record<string, boolean> = {
   [AJUSTES.lerImagens]: true,
 };
+
+/**
+ * Prazos nascem desligados. Ligar um relógio que mexe em conversa de cliente
+ * sem alguém ter pedido é pior do que não ter o relógio.
+ */
+export const PRAZO_DESLIGADO = 0;
 
 /**
  * Na dúvida, ligado. Um erro de banco não pode virar "o bot parou de ler

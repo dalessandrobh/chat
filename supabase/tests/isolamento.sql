@@ -233,6 +233,65 @@ begin
   raise notice 'ok: só o servidor lê credencial, e lê a certa';
 end $$;
 
+\echo '=== encerrar conversa não atravessa empresa ==='
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111aa","role":"authenticated"}';
+do $$
+begin
+  begin
+    perform chat.close_conversation('22222222-0000-0000-0000-0000000000c3');
+    raise exception 'FALHOU: A encerrou conversa de B';
+  exception when insufficient_privilege then null;
+  end;
+
+  begin
+    perform chat.reopen_conversation('22222222-0000-0000-0000-0000000000c3');
+    raise exception 'FALHOU: A reabriu conversa de B';
+  exception when insufficient_privilege then null;
+  end;
+
+  -- Na própria pode, e sai do modo humano junto.
+  update chat.conversations set mode='human' where id='11111111-0000-0000-0000-0000000000c3';
+  perform chat.close_conversation('11111111-0000-0000-0000-0000000000c3');
+
+  if (select status::text from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') <> 'closed' then
+    raise exception 'FALHOU: a conversa não foi encerrada';
+  end if;
+  if (select mode::text from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') <> 'bot' then
+    raise exception 'FALHOU: ficou encerrada em modo humano — reabriria muda';
+  end if;
+
+  raise notice 'ok: encerrar fica na própria empresa e não deixa conversa muda';
+end $$;
+reset role;
+
+\echo '=== o relógio de prazos respeita o prazo de cada empresa ==='
+
+do $$
+declare v_mexeu int;
+begin
+  -- Só A configura prazo. B fica sem, e não pode ser tocada.
+  insert into chat.settings (company_id, key, value)
+  values ('11111111-1111-1111-1111-111111111111', 'encerrar_apos_minutos', '1'::jsonb);
+
+  update chat.conversations
+     set last_message_at = now() - interval '2 hours', status = 'open'
+   where company_id in ('11111111-1111-1111-1111-111111111111',
+                        '22222222-2222-2222-2222-222222222222');
+
+  select count(*) into v_mexeu from chat.aplicar_prazos_de_conversa();
+
+  if (select status::text from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') <> 'closed' then
+    raise exception 'FALHOU: a conversa de A não foi encerrada pelo prazo dela';
+  end if;
+  if (select status::text from chat.conversations where id='22222222-0000-0000-0000-0000000000c3') = 'closed' then
+    raise exception 'FALHOU: o prazo de A encerrou conversa de B';
+  end if;
+
+  raise notice 'ok: cada empresa é encerrada pelo prazo dela, e só';
+end $$;
+
 \echo '=== a tela de Empresa só alcança a própria ==='
 
 set local role authenticated;
