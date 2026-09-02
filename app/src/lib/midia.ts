@@ -138,8 +138,26 @@ async function descreverImagem(base64: string, mimeType: string): Promise<string
 
 async function transcreverAudio(base64: string, mimeType: string): Promise<string | null> {
   const tipo = mimeType.split(";")[0].trim().toLowerCase();
-  // Áudio de WhatsApp é ogg/opus; o Whisper lê direto, sem conversão.
-  const extensao = tipo.includes("mp4") || tipo.includes("m4a") ? "m4a" : tipo.includes("mpeg") ? "mp3" : "ogg";
+
+  // Áudio de WhatsApp é sempre ogg/opus e o Whisper lê direto. Mas arquivo
+  // encaminhado pode vir em qualquer formato, e provedor de transcrição olha
+  // a extensão: mandar um wav chamado `.ogg` faz uns aceitarem e outros
+  // recusarem, com uma mensagem que não fala de formato.
+  const EXTENSAO: Record<string, string> = {
+    "audio/ogg": "ogg",
+    "audio/opus": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/mp4": "m4a",
+    "audio/m4a": "m4a",
+    "audio/x-m4a": "m4a",
+    "audio/aac": "m4a",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/webm": "webm",
+    "audio/flac": "flac",
+  };
+  const extensao = EXTENSAO[tipo] ?? "ogg";
 
   const form = new FormData();
   form.append("file", new Blob([Buffer.from(base64, "base64")], { type: tipo }), `audio.${extensao}`);
