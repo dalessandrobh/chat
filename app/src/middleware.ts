@@ -9,7 +9,10 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/auth"];
+// /nova-senha é público porque o token da recuperação vem no fragmento da
+// URL, que o navegador não manda ao servidor: aqui não há sessão para o
+// middleware ver, e barrar mataria o link antes de o cliente processá-lo.
+const PUBLIC_PATHS = ["/login", "/auth", "/nova-senha"];
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });

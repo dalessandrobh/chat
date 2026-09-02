@@ -73,3 +73,37 @@ Trocar o endereço exige que o novo domínio esteja verificado no Resend. O nome
 que aparece na caixa de entrada é o `SMTP_SENDER_NAME`, e esse muda sem
 verificação nenhuma. Se quiser o endereço no domínio do Chat, verifique
 `chat.dsearch.com.br` no Resend antes.
+
+
+## Recuperação de senha
+
+A tela de login tem **"Recuperar sua senha?"**. Ela chama
+`resetPasswordForEmail` com `redirectTo` apontando para `/nova-senha`, e o
+GoTrue manda o e-mail com o modelo `recuperacao.html`.
+
+O link do e-mail passa pelo `/auth/v1/verify` do GoTrue, que redireciona para
+`/nova-senha` **com o token no fragmento da URL** (`#access_token=…`). O
+navegador não manda fragmento para o servidor: ali não existe sessão que o
+middleware possa ver. Por isso `/nova-senha` é caminho público — barrar mataria
+o link antes de o cliente conseguir lê-lo.
+
+Dois cuidados na tela:
+
+**Ela espera antes de mostrar o formulário.** Enquanto o cliente processa o
+fragmento não há sessão; mostrar os campos nesse instante seria prometer algo
+que ainda pode falhar. Passados três segundos sem sessão, a tela diz que o link
+venceu e oferece pedir outro.
+
+**A resposta é a mesma com e sem conta.** Pedir recuperação para um e-mail que
+não existe devolve a mesma frase — dizer "esse e-mail não existe" entregaria
+quem é cliente para quem só está testando endereços.
+
+## O olho nos campos de senha
+
+`components/ui/CampoSenha.tsx` é o campo padrão: mostra e oculta o conteúdo.
+Está no login, no cadastro, na tela de nova senha e no campo de credencial dos
+canais — que é senha do mesmo jeito: quem cola uma chave precisa conferir se
+veio inteira antes de guardar.
+
+O botão fica fora da ordem de tabulação de propósito: quem navega pelo teclado
+quer ir do campo para o botão de enviar, não para o olho.

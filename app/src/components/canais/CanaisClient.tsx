@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CampoSenha } from "@/components/ui/CampoSenha";
 
 export interface Channel {
   id: string;
@@ -298,15 +299,18 @@ function Credenciais({ channel }: { channel: Channel }) {
             </option>
           ))}
         </select>
-        <input
-          type="password"
-          value={valor}
-          onChange={(e) => setValor(e.target.value)}
-          placeholder="cole o valor"
-          autoComplete="off"
-          className="min-w-0 flex-1 rounded-lg border px-3 py-1.5 font-mono text-xs"
-          style={{ background: "var(--panel)", borderColor: "var(--border)" }}
-        />
+        {/* Também é campo de senha: quem cola uma chave precisa poder conferir
+            se veio inteira antes de guardar. */}
+        <span className="min-w-0 flex-1">
+          <CampoSenha
+            value={valor}
+            onChange={setValor}
+            placeholder="cole o valor"
+            autoComplete="off"
+            className="rounded-lg border px-3 py-1.5 font-mono text-xs"
+            style={{ background: "var(--panel)", borderColor: "var(--border)" }}
+          />
+        </span>
         <button
           onClick={() => void gravar()}
           disabled={busy || valor.trim().length < 8}
