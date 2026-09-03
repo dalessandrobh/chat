@@ -122,6 +122,47 @@ export type Numero =
   | { ok: false; motivo: string };
 
 /**
+ * Códigos de operadora de longa distância (CSP) — o "op" de `0 op DDD número`.
+ * São os que a Anatel atribuiu e que aparecem em base exportada de PABX.
+ */
+const OPERADORAS = new Set([
+  "12", "14", "15", "17", "21", "23", "25", "31", "32", "41", "43",
+]);
+
+/** DDDs em uso. Serve para conferir onde o número começa de verdade. */
+const DDDS = new Set([
+  "11", "12", "13", "14", "15", "16", "17", "18", "19",
+  "21", "22", "24", "27", "28",
+  "31", "32", "33", "34", "35", "37", "38",
+  "41", "42", "43", "44", "45", "46", "47", "48", "49",
+  "51", "53", "54", "55",
+  "61", "62", "63", "64", "65", "66", "67", "68", "69",
+  "71", "73", "74", "75", "77", "79",
+  "81", "82", "83", "84", "85", "86", "87", "88", "89",
+  "91", "92", "93", "94", "95", "96", "97", "98", "99",
+]);
+
+/**
+ * Tira a operadora do meio de `pp op ddd número`.
+ *
+ * Quem exporta de PABX ou de CRM que guarda o número já discado grava o CSP —
+ * o 15 da Vivo, o 41 da TIM — entre o país e o DDD. Sem tirar, `551531999998888`
+ * tem quinze dígitos, não bate com nada brasileiro e entra como "outro país":
+ * o contato é criado com um wa_id que não existe e a mensagem nunca chega.
+ *
+ * Só mexe quando as três peças fecham: o país (55, ou o 0 da chamada nacional),
+ * uma operadora conhecida e um DDD que existe. Na dúvida devolve intacto — é
+ * melhor um número estrangeiro importado como está do que um brasileiro mutilado.
+ */
+function semOperadora(digitos: string): string {
+  const m = /^(?:55|0)(\d{2})(\d{2})(\d{8,9})$/.exec(digitos);
+  if (!m) return digitos;
+  const [, op, ddd, numero] = m;
+  if (!OPERADORAS.has(op) || !DDDS.has(ddd)) return digitos;
+  return `55${ddd}${numero}`;
+}
+
+/**
  * Decide pelo TAMANHO, não pelo prefixo.
  *
  * O atalho óbvio — "começa com 55, então já tem o país" — quebra em Santa
@@ -130,7 +171,13 @@ export type Numero =
  * casos sem ambiguidade.
  */
 export function normalizarNumero(bruto: string): Numero {
-  const digitos = (bruto ?? "").replace(/\D/g, "").replace(/^0+/, "");
+  const cru = (bruto ?? "").replace(/\D/g, "");
+  if (!cru) return { ok: false, motivo: "sem número" };
+
+  // Duas passadas: a primeira pega `0 op ddd número`, ainda com o zero da
+  // chamada nacional; a segunda, depois de cair o zero, pega `55 op ddd número`
+  // e também o `00 55 op ...` de quem exportou com prefixo internacional.
+  const digitos = semOperadora(semOperadora(cru).replace(/^0+/, ""));
 
   if (!digitos) return { ok: false, motivo: "sem número" };
 
