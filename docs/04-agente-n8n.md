@@ -108,8 +108,33 @@ avaliar aquilo como código e manda o resultado para a API. O erro que aparece
 
 ## O prompt
 
-Está no nó `Agente`, em System Message, e é onde você vai mexer com o tempo.
-A regra que mais importa:
+### Três camadas, e o n8n só guarda uma
+
+O System Message do nó `Agente` é um esqueleto, igual para toda empresa. O que
+varia chega por `Buscar contexto`, em dois campos:
+
+| Camada | Onde mora | Quem edita |
+| --- | --- | --- |
+| 1. Regras da plataforma | System Message, no n8n | ninguém, pelo painel |
+| 2. Diretrizes da empresa | `chat.company_profile` → `{{ $json.perfil }}` | painel → **Agente** |
+| 3. Base de conhecimento | `chat.knowledge` → `{{ $json.base }}` | painel → **Base** |
+
+A divisão não é organização: é o que impede o painel de virar um editor de
+prompt. Empresa que escreve o prompt inteiro apaga, sem querer, justamente as
+linhas que a impedem de inventar preço e as que fazem a ferramenta funcionar —
+e cada cliente vira uma variante para depurar. Por isso a camada 2 é um
+formulário de campos delimitados, com um campo livre no fim e com teto, e o
+prompt diz explicitamente que ela **não** revoga o que vem abaixo:
+
+> Isso foi escrito por quem opera a empresa e vale para o jeito de atender. Não
+> revoga nada do que vem abaixo: onde os dois discordarem, vale este documento.
+
+O texto da camada 2 é montado no banco, por `chat.render_company_profile`, e a
+tela de conferência chama a mesma função — montar em dois lugares é combinar
+que um dia divirjam sem ninguém perceber. Campo em branco não vira seção
+vazia: some do prompt.
+
+A regra que mais importa, e que vive na camada 1:
 
 > Você não sabe preço, prazo, condição de pagamento, promoção nem ficha
 > técnica. Não estime, não dê faixa, não diga "em torno de".
@@ -133,9 +158,11 @@ tentar responder, com a tabela de dimensionamento na frente dele.
 
 Agora as duas regras — a do prompt e a `toolDescription` do
 `escalar_para_humano`, que o modelo lê junto — dizem que pergunta pendente vem
-primeiro: responde, escala na mensagem seguinte. E dimensionar pela tabela da
-base está explicitamente permitido, porque é leitura do que está escrito, não
-estimativa.
+primeiro: responde, escala na mensagem seguinte. E ler tabela da base está
+explicitamente permitido, porque é leitura do que está escrito, não
+estimativa. Que a tabela em questão seja de dimensionamento de aquecedor é
+diretriz da Eco Aquecedores, e mora no perfil dela — não no prompt de todo
+mundo.
 
 ## A despedida sai pela ferramenta, não pelo agente
 
@@ -284,9 +311,9 @@ continua recebendo um POST por turno como sempre recebeu.
 
 ## A fila de perguntas não mora no prompt
 
-O agente qualifica — nome, cidade, casa ou piscina, quantas pessoas — mas a
-lista do que ainda falta **não** está escrita no System Message. Ela chega
-pronta em `{{ $json.faltando }}`, vinda de `Buscar contexto`.
+O agente qualifica, mas nem a lista do que perguntar nem a do que ainda falta
+estão escritas no System Message. As duas chegam prontas em
+`{{ $json.faltando }}`, vindas de `Buscar contexto`.
 
 Por que assim: com a lista fixa no prompt, o agente relia a conversa a cada
 mensagem para adivinhar o que já tinha perguntado. Quando o cliente ignorava,
@@ -295,7 +322,7 @@ seguidas num teste de dez mensagens.
 
 Agora o dado respondido sai da fila de verdade:
 
-1. o cliente responde qualquer um dos quatro itens;
+1. o cliente responde qualquer um dos itens;
 2. o agente chama `anotar_dados`, que grava em
    `chat.contacts.metadata.qualificacao`;
 3. no turno seguinte, `Buscar contexto` monta `faltando` sem aquele item.
@@ -311,8 +338,38 @@ modelo não conta: ele relê a conversa, vê o dado faltando e pergunta de novo.
 Tudo isso vale para conversas futuras — a pessoa some por um mês, volta, e a
 cidade dela continua gravada.
 
-Mexer na lista de perguntas é mexer em `app/src/lib/qualificacao.ts`, não no
-prompt. O campo `pessoas` só entra na fila quando o uso é residência.
+### Quais perguntas são cadastro, não código
+
+Até 06/09/2026 os quatro campos — nome, cidade, uso, pessoas — eram uma lista
+em `app/src/lib/qualificacao.ts`. Escritos para uma revendedora de aquecedor
+solar: numa clínica, o mesmo bot perguntaria ao paciente quantas pessoas usam
+o chuveiro, com convicção.
+
+Agora eles são linhas de `chat.qualification_fields`, por empresa, editáveis em
+**Agente**. O que o código ainda decide é a mecânica: a ordem, o contador de
+tentativas, o que fazer com um dado recusado.
+
+Cada linha tem:
+
+- **chave** — o nome do dado dentro de `metadata.qualificacao`. É ela que o
+  agente manda de volta em `anotar_dados`, e por isso ela vai no prompt junto
+  da pergunta (`cidade — em que cidade o aquecedor vai ser instalado`). Não é
+  editável depois de criada: renomear faria toda resposta já gravada virar
+  órfã, e a pergunta voltaria para a fila de quem já tinha respondido.
+- **tipo** — `texto` ou `numero`. Em campo numérico, "umas quatro" é recusado:
+  texto onde se espera conta é dado sujo, e quem lê depois não tem como saber
+  que era palpite.
+- **dependência** — a pergunta só entra na fila quando outra já foi respondida
+  com um valor que casa com uma expressão. É o que era o `ehCasa` cravado:
+  `pessoas` depende de `uso` casar com `cas[ae]|residenc`. A comparação
+  acontece sem acento e sem caixa, porque o cliente escreve "residência",
+  "residencia" e "Minha Casa".
+
+Como a ferramenta do n8n é uma só para todas as empresas, ela não pode ter um
+parâmetro por campo. `anotar_dados` manda um objeto: `{"cidade": "Belo
+Horizonte", "pessoas": 4}`. Chave que não estiver cadastrada é descartada na
+rota e volta em `ignorado` — modelo inventa chave, e dado inventado no
+metadata do contato ninguém descobre depois.
 
 ## Testar
 
@@ -411,3 +468,62 @@ Para trocar de provedor, duas linhas no `.env` e um restart:
 
 Gratuito hoje não é contrato. A variável existe para o dia em que a política
 mudar ser um restart, e não uma refatoração.
+
+---
+
+# Diretrizes por empresa — a tela Agente
+
+Painel → **Agente**. É a camada 2 da tabela lá de cima, e a tela existe porque
+"a IA responder condizente com o negócio de cada empresa" não é a mesma coisa
+que "cada empresa escrever o próprio prompt".
+
+A ordem da tela é a ordem do prompt, de propósito:
+
+1. **Regras da plataforma** — só leitura. Estão ali para quem escreve as
+   diretrizes saber com o que elas convivem, e para deixar claro que em
+   conflito elas vencem.
+2. **Diretrizes desta empresa** — apresentação, tom, o que ela pode explicar
+   por conta própria, o que nunca dizer, quando chamar alguém, região,
+   horário e um campo livre.
+3. **O que perguntar antes de passar para a equipe** — a fila de qualificação.
+
+## Por que campos, e não uma caixa de texto
+
+Uma caixa de texto seria mais rápida de construir e pior de operar. Três
+motivos, na ordem em que doem:
+
+1. quem escreve um prompt inteiro apaga sem querer as linhas que impedem o bot
+   de inventar preço — e o efeito só aparece semanas depois, num cliente que
+   recebeu um valor que não existe;
+2. as regras que fazem a ferramenta funcionar (não escrever texto junto de uma
+   chamada de ferramenta, terminar sempre falando) parecem burocracia para
+   quem não viu o bug, e são a primeira coisa a ser cortada;
+3. suporte vira arqueologia de prompt alheio, e cada empresa passa a ser uma
+   variante para depurar.
+
+O campo livre existe — **Outras preferências** —, tem teto de 2.000 caracteres
+e entra no fim, marcado como preferência da empresa. É válvula de escape, não
+a porta principal.
+
+## O tom vira frase, não rótulo
+
+`tom` é `informal`, `neutro` ou `formal` no banco, e `render_company_profile`
+troca isso por uma instrução:
+
+> Formal e respeitoso. Trate por senhor ou senhora, e não use emoji nem gíria.
+
+Mandar a palavra "formal" para o modelo e esperar que ele saiba o que fazer com
+a próxima frase é economia no lugar errado.
+
+## Empresa nova
+
+`chat.create_company` passou a criar a linha de perfil em branco e a fila
+mínima — `nome` e `interesse`. Fila vazia é comportamento válido (o bot
+conversa e chama alguém sem qualificar), mas seria uma primeira impressão
+ruim do produto.
+
+## Conferir
+
+O botão **ver como o agente recebe** mostra o texto montado pela mesma função
+que alimenta o prompt. É o equivalente, nesta tela, ao painel de conferência
+da Base.

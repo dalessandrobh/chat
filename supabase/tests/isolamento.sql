@@ -55,6 +55,16 @@ insert into chat.knowledge (title,content,position,is_active,company_id) values
  ('Preço A','R$ 1,00',1,true,'11111111-1111-1111-1111-111111111111'),
  ('Preço B','R$ 2,00',1,true,'22222222-2222-2222-2222-222222222222');
 
+-- As diretrizes do agente são tão da empresa quanto a base: o perfil de uma
+-- no prompt da outra faria o bot atender em nome de quem não é.
+insert into chat.company_profile (company_id,apresentacao) values
+ ('11111111-1111-1111-1111-111111111111','Segredo do perfil de A'),
+ ('22222222-2222-2222-2222-222222222222','Segredo do perfil de B');
+
+insert into chat.qualification_fields (company_id,chave,pergunta,position) values
+ ('11111111-1111-1111-1111-111111111111','pergunta_a','o que só A pergunta',10),
+ ('22222222-2222-2222-2222-222222222222','pergunta_b','o que só B pergunta',10);
+
 -- O mesmo número nas duas listas: era impossível antes, e é o caso que o
 -- descadastro precisa distinguir.
 insert into chat.audience (name,wa_id,company_id) values
@@ -89,6 +99,12 @@ begin
   end if;
   if exists (select 1 from chat.knowledge where company_id = '22222222-2222-2222-2222-222222222222') then
     raise exception 'FALHOU: A vê a base de B';
+  end if;
+  if exists (select 1 from chat.company_profile where company_id = '22222222-2222-2222-2222-222222222222') then
+    raise exception 'FALHOU: A vê as diretrizes de B';
+  end if;
+  if exists (select 1 from chat.qualification_fields where company_id = '22222222-2222-2222-2222-222222222222') then
+    raise exception 'FALHOU: A vê a qualificação de B';
   end if;
   if exists (select 1 from chat.audience  where company_id = '22222222-2222-2222-2222-222222222222') then
     raise exception 'FALHOU: A vê a lista de envio de B';
@@ -146,6 +162,26 @@ begin
     raise exception 'FALHOU: a base de B vazou para o prompt de A';
   end if;
   raise notice 'ok: prompt de A só tem a base de A';
+end $$;
+
+do $$
+declare
+  v_perfil text := chat.render_company_profile('11111111-1111-1111-1111-111111111111');
+begin
+  if v_perfil not like '%Segredo do perfil de A%' then
+    raise exception 'FALHOU: as diretrizes de A não chegaram ao prompt';
+  end if;
+
+  -- A função é security definer e recebe a empresa por parâmetro: sem a
+  -- guarda de dentro dela, bastaria trocar o uuid.
+  begin
+    perform chat.render_company_profile('22222222-2222-2222-2222-222222222222');
+    raise exception 'FALHOU: A montou as diretrizes de B';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  raise notice 'ok: diretrizes de A só chegam a A';
 end $$;
 
 reset role;

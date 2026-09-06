@@ -1,9 +1,16 @@
 /**
  * POST /api/internal/conversations/:id/qualification
  *
- * O agente grava aqui o que apurou: nome, cidade, uso e número de pessoas.
- * O que entra nesta rota sai da fila de perguntas que o contexto devolve no
- * turno seguinte — é isso que impede o bot de perguntar a mesma coisa de novo.
+ * O agente grava aqui o que apurou. O que entra nesta rota sai da fila de
+ * perguntas que o contexto devolve no turno seguinte — é isso que impede o
+ * bot de perguntar a mesma coisa de novo.
+ *
+ * Quais campos existem é da empresa, não desta rota: eles vêm de
+ * `chat.qualification_fields`. A ferramenta do n8n é uma só para todas, então
+ * ela manda um objeto `dados` com as chaves que o prompt daquela empresa
+ * listou — e o que não estiver cadastrado é descartado aqui, calado. Modelo
+ * inventa chave; dado inventado no metadata do contato ninguém descobre
+ * depois.
  *
  * Guardamos no contato, não na conversa: a pessoa some por um mês, volta, e a
  * cidade dela continua sendo a mesma.
@@ -13,11 +20,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { hasServiceToken } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { camposDaEmpresa } from "@/lib/diretrizes";
 import {
-  CHAVES,
   faltando,
   lerQualificacao,
-  type CampoQualificacao,
+  type Campo,
   type Qualificacao,
 } from "@/lib/qualificacao";
 
@@ -26,21 +33,58 @@ import {
  * "null", "não informado" — querendo dizer "não sei". Nada disso pode virar
  * dado gravado, senão a pergunta sai da fila sem ter sido respondida.
  */
-const vazio = (v: unknown) =>
-  typeof v === "string" && /^\s*(|null|undefined|n\/a|não informado|nao informado|-)\s*$/i.test(v)
-    ? undefined
-    : v;
-
-const texto = (max: number) => z.preprocess(vazio, z.string().trim().min(1).max(max).optional());
+function vazio(v: unknown): boolean {
+  if (v === null || v === undefined) return true;
+  if (typeof v === "number") return !Number.isFinite(v);
+  if (typeof v !== "string") return false;
+  return /^\s*(|null|undefined|n\/a|não informado|nao informado|-)\s*$/i.test(v);
+}
 
 const bodySchema = z.object({
-  nome: texto(120),
-  cidade: texto(120),
-  uso: texto(60),
-  pessoas: z.preprocess(vazio, z.coerce.number().int().min(1).max(99).optional()),
+  /** O objeto com as respostas: `{"cidade":"Belo Horizonte","pessoas":4}`.
+   *  Chega como texto quando o modelo prefere mandar JSON numa string. */
+  dados: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
   /** Aceita "cidade,pessoas" ou ["cidade","pessoas"]: o modelo usa as duas formas. */
-  dispensados: z.preprocess(vazio, z.union([z.string(), z.array(z.string())]).optional()),
+  dispensados: z.union([z.string(), z.array(z.string())]).optional(),
 });
+
+/** `dados` como objeto, venha ele como objeto ou como JSON dentro de string. */
+function lerDados(bruto: unknown): Record<string, unknown> {
+  if (bruto && typeof bruto === "object" && !Array.isArray(bruto)) {
+    return bruto as Record<string, unknown>;
+  }
+  if (typeof bruto === "string") {
+    try {
+      const parsed = JSON.parse(bruto);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // JSON quebrado é o mesmo que não ter mandado nada: a pergunta continua
+      // na fila e o agente pergunta de novo no turno seguinte.
+    }
+  }
+  return {};
+}
+
+/** Converte a resposta para o tipo do campo, ou devolve undefined quando ela
+ *  não serve. Texto onde se espera conta — "umas quatro" — é dado sujo, e
+ *  quem lê depois não tem como saber que era um palpite. */
+function converter(campo: Campo, valor: unknown): string | number | undefined {
+  if (vazio(valor)) return undefined;
+
+  if (campo.tipo === "numero") {
+    const n = typeof valor === "number" ? valor : Number(String(valor).replace(",", "."));
+    if (!Number.isFinite(n)) return undefined;
+    const inteiro = Math.round(n);
+    if (inteiro < 0 || inteiro > 1_000_000) return undefined;
+    return inteiro;
+  }
+
+  const texto = String(valor).trim();
+  if (texto.length === 0) return undefined;
+  return texto.slice(0, 200);
+}
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!hasServiceToken(request)) {
@@ -48,7 +92,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const { id } = await params;
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  const corpo = await request.json().catch(() => null);
+  const parsed = bodySchema.safeParse(corpo);
   if (!parsed.success) {
     return NextResponse.json({ error: "Payload inválido" }, { status: 400 });
   }
@@ -57,7 +102,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: conversation } = await db
     .from("conversations")
-    .select("contact_id, contacts(metadata, display_name)")
+    .select("contact_id, company_id, contacts(metadata, display_name)")
     .eq("id", id)
     .maybeSingle();
 
@@ -65,35 +110,45 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
   }
 
+  const campos = await camposDaEmpresa(conversation.company_id);
+
   const contact = conversation.contacts as unknown as {
     metadata: Record<string, unknown> | null;
     display_name: string | null;
   } | null;
 
   const anterior = lerQualificacao(contact?.metadata);
-  const { nome, cidade, uso, pessoas, dispensados } = parsed.data;
 
+  // O objeto `dados` é o caminho oficial. As chaves soltas na raiz ficam
+  // aceitas porque o modelo às vezes manda assim, e recusar por causa da
+  // forma perderia o dado que ele acabou de apurar.
+  const raiz = (corpo ?? {}) as Record<string, unknown>;
+  const dados = { ...raiz, ...lerDados(parsed.data.dados) };
+
+  const novos: Record<string, string | number> = {};
+  for (const campo of campos) {
+    const valor = converter(campo, dados[campo.chave]);
+    if (valor !== undefined) novos[campo.chave] = valor;
+  }
+
+  const cadastradas = new Set(campos.map((c) => c.chave));
   const recusados = new Set(anterior.dispensados ?? []);
+  const { dispensados } = parsed.data;
   const lista = Array.isArray(dispensados) ? dispensados : (dispensados ?? "").split(",");
   for (const item of lista) {
-    const chave = item.trim().toLowerCase() as CampoQualificacao;
-    if (CHAVES.includes(chave)) recusados.add(chave);
+    const chave = item.trim().toLowerCase();
+    if (cadastradas.has(chave)) recusados.add(chave);
   }
 
   const qualificacao: Qualificacao = {
     ...anterior,
     // Valor novo vence o antigo: a pessoa pode se corrigir no meio da conversa.
-    ...(nome !== undefined && { nome }),
-    ...(cidade !== undefined && { cidade }),
-    ...(uso !== undefined && { uso }),
-    ...(pessoas !== undefined && { pessoas }),
+    ...novos,
     ...(recusados.size > 0 && { dispensados: [...recusados] }),
     atualizado_em: new Date().toISOString(),
   };
 
-  const anotado = (["nome", "cidade", "uso", "pessoas"] as const).filter(
-    (chave) => parsed.data[chave] !== undefined
-  );
+  const nome = typeof novos.nome === "string" ? novos.nome : null;
 
   const { error } = await db
     .from("contacts")
@@ -111,14 +166,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const pendentes = faltando(qualificacao);
+  const pendentes = faltando(qualificacao, campos);
 
   // A resposta volta para o agente no mesmo turno: ele já sabe o que sobrou
   // sem esperar a próxima mensagem do cliente.
   return NextResponse.json({
     ok: true,
-    anotado,
-    falta: pendentes.map((campo) => campo.pergunta),
+    anotado: Object.keys(novos),
+    /** O que o agente mandou e não está cadastrado. Vai na resposta em vez de
+     *  sumir: é assim que se descobre que o prompt e a fila divergiram. */
+    ignorado: Object.keys(dados).filter(
+      (chave) => chave !== "dados" && chave !== "dispensados" && !cadastradas.has(chave)
+    ),
+    falta: pendentes.map((campo) => `${campo.chave} — ${campo.pergunta}`),
     qualificacaoCompleta: pendentes.length === 0,
   });
 }

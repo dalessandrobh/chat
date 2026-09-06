@@ -187,6 +187,22 @@ Vale rodar depois de qualquer mudança em política, view ou função
 `security definer`.
 
 
+### Isolar dado é metade; a outra é o que o bot diz
+
+Separar as linhas por empresa não faz o atendimento ser da empresa. Até
+06/09/2026 o comportamento do agente — tom, o que nunca dizer, quando chamar
+alguém, e as quatro perguntas da qualificação — era o mesmo para todas, escrito
+para uma revendedora de aquecimento solar. Uma clínica com os dados
+perfeitamente isolados teria um bot perguntando ao paciente quantas pessoas
+usam o chuveiro.
+
+O que varia por empresa hoje: `chat.knowledge` (o que o bot sabe),
+`chat.company_profile` (como ele se comporta) e `chat.qualification_fields` (o
+que ele precisa descobrir). O que não varia são as regras que impedem
+alucinação e as que fazem as ferramentas funcionarem — essas ficam no prompt
+do n8n, fora do alcance do painel. O porquê está em
+[`04-agente-n8n.md`](04-agente-n8n.md).
+
 ## Credencial por canal
 
 Endereço e chave da Evolution — e o token do webhook — moravam em variável de

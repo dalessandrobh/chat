@@ -21,6 +21,7 @@ import {
   primeiroNome,
   registrarTentativa,
 } from "@/lib/qualificacao";
+import { camposDaEmpresa, perfilDaEmpresa } from "@/lib/diretrizes";
 
 /** Teto de mensagens no contexto. Conversa de WhatsApp é longa e picotada;
  *  as 40 últimas cobrem o assunto atual sem inflar o prompt. */
@@ -63,6 +64,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     p_company_id: conversation.company_id,
   });
 
+  // As diretrizes de comportamento da empresa e a fila de perguntas dela.
+  // Vêm junto pelo mesmo motivo da base: o workflow já faz esta chamada, e
+  // um agente que precisasse de três chamadas para saber como falar teria
+  // três lugares para falhar.
+  const [perfil, campos] = await Promise.all([
+    perfilDaEmpresa(conversation.company_id),
+    camposDaEmpresa(conversation.company_id),
+  ]);
+
   const { data: messages } = await db
     .from("messages")
     .select("direction, author, type, body, created_at")
@@ -97,7 +107,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   // feita, então é aqui que ela conta como tentativa. Só em modo bot: com um
   // humano na conversa ninguém está perguntando nada em nome do agente.
   if (conversation.mode === "bot") {
-    qualificacao = registrarTentativa(qualificacao);
+    qualificacao = registrarTentativa(qualificacao, campos);
   }
 
   // Uma escrita só, cobrindo o nome que veio do perfil e a tentativa contada.
@@ -122,6 +132,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     /** Base de conhecimento ativa, já montada. Vazia enquanto ninguém ligar
      *  nenhuma seção — e aí o agente segue só com as regras do prompt. */
     base: (base as string | null) ?? "",
+    /**
+     * Diretrizes de atendimento desta empresa: tom, o que nunca dizer, quando
+     * chamar alguém. Entram no prompt **abaixo** das regras da plataforma —
+     * o texto de quem opera não revoga o que faz a ferramenta funcionar.
+     */
+    perfil,
     /** O workflow checa isto antes de responder: em `human` ele não fala. */
     mode: conversation.mode,
     status: conversation.status,
@@ -138,7 +154,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     /** A fila de perguntas que sobrou, pronta para o prompt. Vazia quando não
      *  falta nada — e aí o agente para de perguntar, sem depender de lembrar
      *  o que perguntou. */
-    faltando: faltandoTexto(qualificacao),
+    faltando: faltandoTexto(qualificacao, campos),
     messages: historico.map((m) => ({
       de: ROTULO[m.author as keyof typeof ROTULO] ?? m.author,
       tipo: m.type,

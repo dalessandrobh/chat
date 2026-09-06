@@ -80,6 +80,9 @@ export default async function PainelLayout({
               <Link href="/base" className="hover:underline">
                 Base
               </Link>
+              <Link href="/agente" className="hover:underline">
+                Agente
+              </Link>
               <Link href="/ajustes" className="hover:underline">
                 Ajustes
               </Link>
