@@ -15,7 +15,9 @@ Painel  ──webhook──▶  n8n
                        │
                        └─ Agente (Claude)
                             ├── ferramenta: escalar_para_humano
-                            └── resposta ─▶ POST /api/internal/send
+                            └── tem resposta?
+                                 ├─ sim ─▶ POST /api/internal/send
+                                 └─ não ─▶ chama humano
 ```
 
 ## A memória é `chat.messages`, não a do n8n
@@ -70,10 +72,10 @@ Depois **Active** no canto superior direito. Workflow inativo não atende.
 
 Tanto o "Import from URL" quanto o `n8n import:workflow` descartam o vínculo
 das credenciais: os nós voltam sem nenhuma. Depois de qualquer reimportação,
-percorra os oito nós que precisam de credencial — `Mensagem recebida`,
+percorra os nove nós que precisam de credencial — `Mensagem recebida`,
 `Buscar contexto`, `Responder`, `Avisar que não consegui ler`,
-`Escalar (mídia)`, `escalar_para_humano`, `anotar_dados` e `Claude` — e
-selecione de novo.
+`Escalar (mídia)`, `Escalar (sem resposta)`, `escalar_para_humano`,
+`anotar_dados` e `Claude` — e selecione de novo.
 O sintoma, quando falta, é `Credentials not found` no nó `escalar_para_humano`.
 
 O `import:workflow` também desativa o fluxo, e a reativação por linha de
@@ -118,6 +120,21 @@ quando o assunto sai do genérico.
 A Fase 4 troca essa restrição por uma base de conhecimento: aí ele responde
 preço porque leu o seu, não porque inventou.
 
+### Qualificação completa não é motivo para calar
+
+Duas regras do prompt se contradiziam. "Com a lista vazia, use
+escalar_para_humano" disparava no mesmo turno em que o último dado chegava —
+mesmo quando o cliente tinha acabado de perguntar algo que a base responde. Em
+06/09/2026 alguém perguntou qual aquecedor serve para quatro pessoas, o
+`anotar_dados` fechou a qualificação com esse mesmo "4", e o agente escalou sem
+tentar responder, com a tabela de dimensionamento na frente dele.
+
+Agora as duas regras — a do prompt e a `toolDescription` do
+`escalar_para_humano`, que o modelo lê junto — dizem que pergunta pendente vem
+primeiro: responde, escala na mensagem seguinte. E dimensionar pela tabela da
+base está explicitamente permitido, porque é leitura do que está escrito, não
+estimativa.
+
 ## A despedida sai pela ferramenta, não pelo agente
 
 `escalar_para_humano` manda a mensagem de despedida **antes** de trocar o modo
@@ -127,6 +144,25 @@ Se o agente escalasse primeiro e falasse depois, a fala esbarraria na própria
 trava de handoff: o modo já seria `human`, `/api/internal/send` devolveria 409
 e o cliente ficaria sem resposta nenhuma — escalado em silêncio. O texto está
 no `jsonBody` do nó da ferramenta, e é lá que se edita.
+
+## Resposta vazia não vai para o `send`
+
+Entre o `Agente` e o `Responder` existe um IF, `Tem resposta?`. Só passa quem
+tem texto; o resto vai para `Escalar (sem resposta)`.
+
+O motivo é um silêncio real, em 06/09/2026: com a qualificação já fechada e
+duas escalações na transcrição, o modelo devolveu `output: ""` — zero tokens
+de saída, nenhuma ferramenta chamada. O `Responder` mandou `text: ""`,
+`/api/internal/send` recusou com
+
+    {"error":"Payload inválido","issues":[{"code":"too_small","path":["text"]}]}
+
+e, como o nó tem `neverError`, a execução foi marcada **success**. O cliente
+perguntou duas vezes e não recebeu nada, e nada apareceu como erro.
+
+Agora resposta vazia vira escalação, com `reason: 'O agente devolveu resposta
+vazia'` — visível em `chat.handoff_events`, que é onde se conta quantas vezes
+isso acontece.
 
 ## Foto e áudio viram texto antes de chegar aqui
 
