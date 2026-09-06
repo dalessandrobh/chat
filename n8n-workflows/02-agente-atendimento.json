@@ -277,13 +277,7 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ type: 'text', conversationId: $('Normalizar').item.json.conversationId, text: $json.output }) }}",
-        "options": {
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
+        "options": {}
       },
       "id": "responder",
       "name": "Responder",

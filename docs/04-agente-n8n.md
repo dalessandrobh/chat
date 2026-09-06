@@ -157,12 +157,22 @@ de saída, nenhuma ferramenta chamada. O `Responder` mandou `text: ""`,
 
     {"error":"Payload inválido","issues":[{"code":"too_small","path":["text"]}]}
 
-e, como o nó tem `neverError`, a execução foi marcada **success**. O cliente
+e, como o nó tinha `neverError`, a execução foi marcada **success**. O cliente
 perguntou duas vezes e não recebeu nada, e nada apareceu como erro.
 
 Agora resposta vazia vira escalação, com `reason: 'O agente devolveu resposta
 vazia'` — visível em `chat.handoff_events`, que é onde se conta quantas vezes
 isso acontece.
+
+O `neverError` saiu do `Responder`. Ele existia para uma recusa do `/send` não
+derrubar o fluxo, e o preço era esse: recusa nenhuma aparecia. Qualquer outro
+4xx — janela de 24h vencida, conversa que virou humana no meio da rodada —
+agora deixa a execução vermelha na lista do n8n, que é onde se procura.
+
+Os outros nós de HTTP continuam com `neverError`, de propósito: `Avisar que
+não consegui ler`, `Escalar (mídia)` e `Escalar (sem resposta)` são o último
+recurso de uma rodada que já deu errado, e falhar ali só trocaria um silêncio
+por outro.
 
 ## Foto e áudio viram texto antes de chegar aqui
 
