@@ -15,9 +15,11 @@ Painel  ──webhook──▶  n8n
                        │
                        └─ Agente (Claude)
                             ├── ferramenta: escalar_para_humano
-                            └── tem resposta?
-                                 ├─ sim ─▶ POST /api/internal/send
-                                 └─ não ─▶ chama humano
+                            └── já escalou?
+                                 ├─ sim ─▶ encerra
+                                 └─ não ─▶ tem resposta?
+                                            ├─ sim ─▶ POST /api/internal/send
+                                            └─ não ─▶ chama humano
 ```
 
 ## A memória é `chat.messages`, não a do n8n
@@ -142,8 +144,33 @@ para `human`, e é por isso que ela mora no endpoint e não no fluxo.
 
 Se o agente escalasse primeiro e falasse depois, a fala esbarraria na própria
 trava de handoff: o modo já seria `human`, `/api/internal/send` devolveria 409
-e o cliente ficaria sem resposta nenhuma — escalado em silêncio. O texto está
-no `jsonBody` do nó da ferramenta, e é lá que se edita.
+e o cliente ficaria sem resposta nenhuma — escalado em silêncio.
+
+### E quem escreve a despedida é o modelo
+
+O texto era fixo no nó da ferramenta, e isso custou uma resposta certa. Em
+06/09/2026 o modelo respondeu bem a pergunta de dimensionamento —
+
+> Com 4 pessoas, considerando 2 banhos por dia cada (total de 8 banhos/dia), o
+> ideal é o ECO-230! 🙌 Vou chamar um consultor pra fechar os detalhes com você.
+
+— mas escreveu isso **no mesmo turno** em que chamou `escalar_para_humano`. O
+laço de agente do n8n descarta o texto que vem junto de uma tool call: só o
+`output` da última rodada chega ao nó `Responder`. O cliente recebeu a
+despedida genérica, e a resposta boa foi para o lixo.
+
+Agora `message` é um parâmetro do modelo (`modelRequired`, corpo em keypair) e
+a instrução é explícita: se há pergunta que a base responde, a resposta vai ali
+junto com o aviso, numa mensagem só. `conversationId` e `reason` continuam
+fixos no nó — quem chama não escolhe em nome de quem age.
+
+### `Já escalou?`
+
+Depois de usar a ferramenta o modelo às vezes ainda escreve uma frase de
+fecho. Ela virava `output`, o `Responder` tentava mandar, e o `/send` devolvia
+409 porque a conversa já era humana — execução vermelha por nada. O IF
+`Já escalou?`, entre o `Agente` e o `Tem resposta?`, encerra a rodada que
+chamou `escalar_para_humano`.
 
 ## Resposta vazia não vai para o `send`
 

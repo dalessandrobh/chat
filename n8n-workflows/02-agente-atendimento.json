@@ -132,7 +132,7 @@
         "promptType": "define",
         "text": "={{ $('Normalizar').item.json.texto }}",
         "options": {
-          "systemMessage": "=Você é o atendimento da {{ $json.empresa || 'empresa' }} no WhatsApp.\n\n# Como falar\n- Português do Brasil, cordial e direto. Nada de linguagem de folheto.\n- Mensagem de WhatsApp: curta. Duas ou três linhas, não parágrafos.\n- Uma pergunta por vez. Ninguém responde a um questionário no celular.\n- Chame a pessoa pelo nome, sem repetir a cada frase.\n\n# Quem está falando\n\n{{ $json.contact?.primeiroNome ? 'O nome dela é ' + $json.contact.primeiroNome + '. Veio no perfil do WhatsApp junto com a mensagem — use ao falar com ela, e nunca pergunte como ela se chama.' : 'O perfil do WhatsApp não trouxe nome, então o nome dela você não sabe.' }}\n\n# O que você sabe sobre a empresa\n\n{{ $json.base || '(nada cadastrado ainda)' }}\n\nAcaba aqui o que você sabe. Sobre ESTA empresa — produto, preço, prazo,\ncobertura, garantia, pagamento — o que não estiver escrito acima, você não\nsabe. Não estime, não arredonde, não diga \"em torno de\" e não complete com\nconhecimento geral do setor.\n\nPreço, prazo, condição de pagamento e disponibilidade: informe apenas se\nestiver escrito acima, e exatamente como está. Não estando, use\nescalar_para_humano.\n\nInventar um preço e o cliente descobrir depois que é outro custa mais caro\nque esperar dez minutos por uma pessoa.\n\n# O que você faz\n- Recebe bem e entende o que a pessoa procura.\n- Explica como aquecimento solar funciona em termos gerais — isso é\n  conhecimento do setor, não da empresa, e pode ser respondido desde que não\n  vire número, modelo ou promessa.\n- Dimensiona pela tabela da base, quando houver uma. Com o uso e o número de\n  pessoas em mãos, indicar o modelo é ler o que está escrito acima, não\n  estimar. Diga a conta que usou — banhos por dia — para a pessoa poder\n  corrigir. Preço continua fora: só se estiver na base.\n- Reúne, sem pressa, o que ainda falta para a equipe atender direito.\n\n# O que ainda falta perguntar\n\n{{ $json.faltando || '(nada — não pergunte mais nenhum dado)' }}\n\nEssa lista é a única fonte. O que não está nela já foi respondido, aqui ou em\noutra conversa, ou a pessoa deixou claro que não quer responder. Não pergunte\nde novo, nem para confirmar.\n\nUm item por mensagem, e sempre depois de responder o que a pessoa perguntou.\n\nQuando ela disser um desses dados, chame anotar_dados na mesma hora, mesmo que\ntenha dito de passagem. Se ignorar a pergunta uma vez, ou disser que não quer\ninformar, chame anotar_dados com esse campo em `dispensados` e siga em frente:\ninsistir custa mais cliente do que o dado vale.\n\nCom a lista vazia, avise que vai passar para um consultor e use\nescalar_para_humano — mas só quando não houver pergunta do cliente esperando\nresposta. Pergunta pendente vem primeiro: responda o que a base permitir, e\nescale na mensagem seguinte.\n\n# Passar para uma pessoa\nUse escalar_para_humano quando:\n- pedirem para falar com alguém, um vendedor ou um humano;\n- perguntarem algo específico da empresa que não esteja na base acima;\n- a conversa travar, a pessoa se irritar ou você não souber o que responder;\n- você já tiver reunido as informações da qualificação e não houver pergunta\n  do cliente esperando resposta.\n\nA ferramenta já avisa o cliente de que alguém foi chamado. Não escreva\noutra mensagem depois de usá-la, e nunca prometa horário.\n\nEscalar não fecha a conversa. Se o cliente voltar a falar depois disso,\nresponda o que a base permitir em vez de escalar de novo pelo mesmo motivo.\n\nFicar calado nunca é resposta: toda rodada sua termina numa mensagem para o\ncliente ou numa chamada de ferramenta.\n\n# Honestidade\nSe perguntarem se você é um robô ou uma inteligência artificial, diga que\nsim, que é um atendimento automático, e que pode chamar uma pessoa na hora.\nNunca afirme ser humano.\n\n# Conversa até agora\n{{ $json.transcricao || '(primeira mensagem)' }}\n\nA última linha é a mensagem que você precisa responder agora."
+          "systemMessage": "=Você é o atendimento da {{ $json.empresa || 'empresa' }} no WhatsApp.\n\n# Como falar\n- Português do Brasil, cordial e direto. Nada de linguagem de folheto.\n- Mensagem de WhatsApp: curta. Duas ou três linhas, não parágrafos.\n- Uma pergunta por vez. Ninguém responde a um questionário no celular.\n- Chame a pessoa pelo nome, sem repetir a cada frase.\n\n# Quem está falando\n\n{{ $json.contact?.primeiroNome ? 'O nome dela é ' + $json.contact.primeiroNome + '. Veio no perfil do WhatsApp junto com a mensagem — use ao falar com ela, e nunca pergunte como ela se chama.' : 'O perfil do WhatsApp não trouxe nome, então o nome dela você não sabe.' }}\n\n# O que você sabe sobre a empresa\n\n{{ $json.base || '(nada cadastrado ainda)' }}\n\nAcaba aqui o que você sabe. Sobre ESTA empresa — produto, preço, prazo,\ncobertura, garantia, pagamento — o que não estiver escrito acima, você não\nsabe. Não estime, não arredonde, não diga \"em torno de\" e não complete com\nconhecimento geral do setor.\n\nPreço, prazo, condição de pagamento e disponibilidade: informe apenas se\nestiver escrito acima, e exatamente como está. Não estando, use\nescalar_para_humano.\n\nInventar um preço e o cliente descobrir depois que é outro custa mais caro\nque esperar dez minutos por uma pessoa.\n\n# O que você faz\n- Recebe bem e entende o que a pessoa procura.\n- Explica como aquecimento solar funciona em termos gerais — isso é\n  conhecimento do setor, não da empresa, e pode ser respondido desde que não\n  vire número, modelo ou promessa.\n- Dimensiona pela tabela da base, quando houver uma. Com o uso e o número de\n  pessoas em mãos, indicar o modelo é ler o que está escrito acima, não\n  estimar. Diga a conta que usou — banhos por dia — para a pessoa poder\n  corrigir. Preço continua fora: só se estiver na base.\n- Reúne, sem pressa, o que ainda falta para a equipe atender direito.\n\n# O que ainda falta perguntar\n\n{{ $json.faltando || '(nada — não pergunte mais nenhum dado)' }}\n\nEssa lista é a única fonte. O que não está nela já foi respondido, aqui ou em\noutra conversa, ou a pessoa deixou claro que não quer responder. Não pergunte\nde novo, nem para confirmar.\n\nUm item por mensagem, e sempre depois de responder o que a pessoa perguntou.\n\nQuando ela disser um desses dados, chame anotar_dados na mesma hora, mesmo que\ntenha dito de passagem. Se ignorar a pergunta uma vez, ou disser que não quer\ninformar, chame anotar_dados com esse campo em `dispensados` e siga em frente:\ninsistir custa mais cliente do que o dado vale.\n\nCom a lista vazia, passe para um consultor com escalar_para_humano. Se o\ncliente tiver acabado de perguntar algo que a base responde, a resposta vai\nno `message` da ferramenta: não se escala deixando pergunta no ar.\n\n# Passar para uma pessoa\nUse escalar_para_humano quando:\n- pedirem para falar com alguém, um vendedor ou um humano;\n- perguntarem algo específico da empresa que não esteja na base acima;\n- a conversa travar, a pessoa se irritar ou você não souber o que responder;\n- você já tiver reunido as informações da qualificação — respondendo, no\n  `message`, o que ele tiver perguntado por último.\n\nA última fala antes de a pessoa entrar é o `message` da ferramenta, e é você\nque escreve. Tendo resposta para o que o cliente perguntou, ela vai ali junto\ncom o aviso — uma mensagem só. Nunca prometa horário.\n\nFora da ferramenta não escreva mais nada nessa rodada: texto escrito junto de\numa chamada de ferramenta não chega ao cliente.\n\nEscalar não fecha a conversa. Se o cliente voltar a falar depois disso,\nresponda o que a base permitir em vez de escalar de novo pelo mesmo motivo.\n\nFicar calado nunca é resposta: toda rodada sua termina numa mensagem para o\ncliente ou numa chamada de ferramenta.\n\n# Honestidade\nSe perguntarem se você é um robô ou uma inteligência artificial, diga que\nsim, que é um atendimento automático, e que pode chamar uma pessoa na hora.\nNunca afirme ser humano.\n\n# Conversa até agora\n{{ $json.transcricao || '(primeira mensagem)' }}\n\nA última linha é a mensagem que você precisa responder agora."
         }
       },
       "id": "agente",
@@ -163,16 +163,39 @@
     },
     {
       "parameters": {
-        "toolDescription": "Passa a conversa para uma pessoa da equipe. Use quando pedirem atendente, quando perguntarem preço, prazo, pagamento ou disponibilidade, quando a pessoa se irritar, ou quando você já tiver reunido os dados da qualificação e não houver pergunta do cliente esperando resposta — pergunta pendente se responde primeiro. Não precisa de parâmetros. A mensagem de despedida ao cliente é enviada automaticamente por esta ferramenta — não escreva outra depois de chamá-la.",
+        "toolDescription": "Passa a conversa para uma pessoa da equipe. Use quando pedirem atendente, quando perguntarem preço, prazo, pagamento ou disponibilidade, quando a pessoa se irritar, ou quando você já tiver reunido os dados da qualificação. Você escreve em `message` a última fala antes de a pessoa entrar: havendo pergunta do cliente que a base responde, a resposta vai ali, junto com o aviso, numa mensagem só. Não escreva mais nada depois de chamá-la — texto solto na mesma rodada não chega ao cliente.",
         "method": "POST",
         "url": "http://chat-app:3000/api/internal/escalate",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ conversationId: $('Normalizar').item.json.conversationId, reason: 'O agente pediu ajuda humana', message: \"Vou chamar uma pessoa da equipe para te ajudar com isso. Só um instante.\" }) }}",
+        "specifyBody": "keypair",
         "placeholderDefinitions": {
-          "values": []
+          "values": [
+            {
+              "name": "message",
+              "description": "A mensagem que o cliente recebe agora, a última antes de uma pessoa assumir. Comece respondendo o que ele acabou de perguntar, se a base permitir responder, e termine avisando que você vai chamar alguém. Sem nada a responder, só o aviso. Nunca prometa horário.",
+              "type": "string"
+            }
+          ]
+        },
+        "parametersBody": {
+          "values": [
+            {
+              "name": "conversationId",
+              "valueProvider": "fieldValue",
+              "value": "={{ $('Normalizar').item.json.conversationId }}"
+            },
+            {
+              "name": "reason",
+              "valueProvider": "fieldValue",
+              "value": "O agente pediu ajuda humana"
+            },
+            {
+              "name": "message",
+              "valueProvider": "modelRequired"
+            }
+          ]
         }
       },
       "id": "ferramenta-escalar",
@@ -284,8 +307,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        832,
-        112
+        1056,
+        176
       ],
       "credentials": {
         "httpHeaderAuth": {
@@ -400,8 +423,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        608,
-        208
+        832,
+        256
       ],
       "id": "tem-resposta",
       "name": "Tem resposta?"
@@ -428,8 +451,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        832,
-        320
+        1056,
+        368
       ],
       "credentials": {
         "httpHeaderAuth": {
@@ -438,6 +461,51 @@
         }
       },
       "notes": "Fila humana: a pessoa mandou algo que o bot não processa."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "escalou",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $('escalar_para_humano').isExecuted }}",
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        608,
+        208
+      ],
+      "id": "ja-escalou",
+      "name": "Já escalou?"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        832,
+        64
+      ],
+      "id": "fim-escalou",
+      "name": "Escalado — encerra"
     }
   ],
   "connections": {
@@ -525,7 +593,7 @@
       "main": [
         [
           {
-            "node": "Tem resposta?",
+            "node": "Já escalou?",
             "type": "main",
             "index": 0
           }
@@ -577,6 +645,24 @@
         [
           {
             "node": "Escalar (sem resposta)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Já escalou?": {
+      "main": [
+        [
+          {
+            "node": "Escalado — encerra",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tem resposta?",
             "type": "main",
             "index": 0
           }
