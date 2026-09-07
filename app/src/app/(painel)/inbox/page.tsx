@@ -1,7 +1,7 @@
 import { supabaseServer } from "@/lib/supabase/server";
 import { currentAgent } from "@/lib/auth";
 import { InboxClient } from "@/components/inbox/InboxClient";
-import type { InboxRow, Template } from "@/lib/types";
+import type { AgenteResumo, InboxRow, Template } from "@/lib/types";
 
 // A lista muda o tempo todo; cache não faz sentido aqui.
 export const dynamic = "force-dynamic";
@@ -14,13 +14,16 @@ export default async function InboxPage() {
 
   // Carga inicial no servidor para a tela já abrir preenchida; a partir daí
   // o Realtime mantém atualizado.
-  const [{ data: rows }, { data: templates }] = await Promise.all([
+  const [{ data: rows }, { data: templates }, { data: agentes }] = await Promise.all([
     supabase
       .from("inbox")
       .select("*")
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .limit(200),
     supabase.from("templates").select("*").eq("status", "APPROVED"),
+    // A RLS já limita à empresa; inativos ficam de fora porque direcionar
+    // conversa a quem não entra no painel é perdê-la de vista.
+    supabase.from("agents").select("id, full_name").eq("is_active", true),
   ]);
 
   return (
@@ -28,6 +31,7 @@ export default async function InboxPage() {
       agenteId={agent?.id ?? null}
       initialRows={(rows ?? []) as InboxRow[]}
       templates={(templates ?? []) as Template[]}
+      agentes={(agentes ?? []) as AgenteResumo[]}
     />
   );
 }

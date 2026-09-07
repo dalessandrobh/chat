@@ -189,6 +189,15 @@ export function ConversationList({
                 )}
               </div>
 
+              {/* O recado de para quem é a conversa. Fica junto do tempo de
+                  espera porque as duas coisas se leem juntas: quem espera há
+                  meia hora por alguém que não apareceu é outro caso. */}
+              {row.atribuida_para && (
+                <span className="text-[10px]" style={{ color: "var(--muted)" }}>
+                  → para {row.atribuida_para_nome?.split(" ")[0] ?? "um atendente"}
+                </span>
+              )}
+
               {/* Fora da janela, só template resolve — sinalizamos na lista */}
               {!row.within_window && (
                 <span className="text-[10px] text-amber-600 dark:text-amber-400">

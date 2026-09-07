@@ -13,6 +13,18 @@ export function estaAguardando(row: InboxRow): boolean {
   return row.aguardando_desde !== null;
 }
 
+/**
+ * "Minhas" é o que estou atendendo mais o que foi direcionado a mim.
+ *
+ * O direcionamento não tira a conversa da fila — ela continua contando e
+ * visível para todos —, mas precisa aparecer para quem recebeu o recado, senão
+ * direcionar não serve para nada.
+ */
+export function ehMinha(row: InboxRow, agenteId: string | null): boolean {
+  if (!agenteId || row.status === "closed") return false;
+  return row.assigned_agent_id === agenteId || row.atribuida_para === agenteId;
+}
+
 /** "há 3min", "há 2h". Curto porque divide espaço com o nome do contato. */
 export function esperaEmTexto(iso: string | null, agora = Date.now()): string {
   if (!iso) return "";

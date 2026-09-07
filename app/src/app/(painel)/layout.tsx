@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { canManageKnowledge, canManageTemplates, canManageUsers, roleLabel } from "@/lib/roles";
 import { SairButton } from "@/components/auth/SairButton";
 import { ConversasLink } from "@/components/painel/ConversasLink";
+import { PresencaProvider } from "@/components/painel/Presenca";
 
 export default async function PainelLayout({
   children,
@@ -51,6 +52,13 @@ export default async function PainelLayout({
   const { data: empresa } = await supabase.from("companies").select("name").maybeSingle();
 
   return (
+    // A presença fica no layout, e não na tela de conversas: quem está com o
+    // painel aberto continua disponível mesmo olhando um template.
+    <PresencaProvider
+      agenteId={user.id}
+      nome={agent.full_name ?? agent.email ?? null}
+      empresaId={agent.company_id}
+    >
     <div className="flex h-screen flex-col">
       <header
         className="flex shrink-0 items-center gap-6 border-b px-5 py-3"
@@ -122,5 +130,6 @@ export default async function PainelLayout({
 
       <main className="min-h-0 flex-1">{children}</main>
     </div>
+    </PresencaProvider>
   );
 }

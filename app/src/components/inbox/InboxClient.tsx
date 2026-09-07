@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { autenticarRealtime } from "@/lib/supabase/realtime";
-import { porEsperaMaisLonga } from "@/lib/fila";
-import type { InboxRow, Message, Template } from "@/lib/types";
+import { ehMinha, porEsperaMaisLonga } from "@/lib/fila";
+import type { AgenteResumo, InboxRow, Message, Template } from "@/lib/types";
 import { ConversationList, type Aba } from "./ConversationList";
 import { MessageThread } from "./MessageThread";
 import { HandoffBar } from "./HandoffBar";
@@ -14,10 +14,12 @@ export function InboxClient({
   agenteId,
   initialRows,
   templates,
+  agentes,
 }: {
   agenteId: string | null;
   initialRows: InboxRow[];
   templates: Template[];
+  agentes: AgenteResumo[];
 }) {
   const [rows, setRows] = useState<InboxRow[]>(initialRows);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -180,7 +182,7 @@ export function InboxClient({
   const contagens = useMemo(
     () => ({
       aguardando: rows.filter((r) => r.aguardando_desde).length,
-      minhas: rows.filter((r) => r.assigned_agent_id === agenteId && r.status !== "closed").length,
+      minhas: rows.filter((r) => ehMinha(r, agenteId)).length,
       todas: rows.filter((r) => r.status !== "closed").length,
     }),
     [rows, agenteId]
@@ -205,7 +207,7 @@ export function InboxClient({
     }
 
     if (aba === "minhas") {
-      return rows.filter((r) => r.assigned_agent_id === agenteId && r.status !== "closed");
+      return rows.filter((r) => ehMinha(r, agenteId));
     }
 
     return mostrarEncerradas ? rows : rows.filter((r) => r.status !== "closed");
@@ -241,7 +243,12 @@ export function InboxClient({
       <section className="flex min-w-0 flex-1 flex-col">
         {selected ? (
           <>
-            <HandoffBar row={selected} agenteId={agenteId} onChanged={refresh} />
+            <HandoffBar
+              row={selected}
+              agenteId={agenteId}
+              agentes={agentes}
+              onChanged={refresh}
+            />
             <MessageThread messages={messages} contactName={selected.contact_name} />
             <Composer
               row={selected}

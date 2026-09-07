@@ -148,6 +148,13 @@ begin
   end;
 
   begin
+    perform chat.atribuir_conversa('22222222-0000-0000-0000-0000000000c3',
+                                   '11111111-1111-1111-1111-1111111111aa');
+    raise exception 'FALHOU: A direcionou para si a conversa de B';
+  exception when insufficient_privilege then null;
+  end;
+
+  begin
     perform chat.liberar_para_fila('22222222-0000-0000-0000-0000000000c3', 'invasão');
     raise exception 'FALHOU: A liberou para a fila a conversa de B';
   exception when insufficient_privilege then null;
@@ -518,6 +525,56 @@ begin
 
   raise notice 'ok: soltar a conversa de outro pede motivo e fica registrado';
 end $$;
+
+-- Direcionar é um recado, não uma entrega: a conversa continua na fila.
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111aa","role":"authenticated"}';
+do $$
+begin
+  perform chat.take_over('11111111-0000-0000-0000-0000000000c3');
+  perform chat.atribuir_conversa('11111111-0000-0000-0000-0000000000c3',
+                                 '11111111-1111-1111-1111-1111111111a2',
+                                 'ele já falou com esse cliente');
+
+  if (select assigned_agent_id from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') is not null then
+    raise exception 'FALHOU: direcionar virou posse';
+  end if;
+  if (select atribuida_para from chat.conversations where id='11111111-0000-0000-0000-0000000000c3')
+     <> '11111111-1111-1111-1111-1111111111a2' then
+    raise exception 'FALHOU: o recado não ficou gravado';
+  end if;
+  if (select aguardando_desde from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') is null then
+    raise exception 'FALHOU: direcionar tirou a conversa da fila';
+  end if;
+  if not exists (
+    select 1 from chat.handoff_events
+     where conversation_id = '11111111-0000-0000-0000-0000000000c3'
+       and agent_id      = '11111111-1111-1111-1111-1111111111aa'
+       and para_agent_id = '11111111-1111-1111-1111-1111111111a2'
+       and reason = 'ele já falou com esse cliente'
+  ) then
+    raise exception 'FALHOU: o direcionamento não registrou quem recebeu';
+  end if;
+
+  -- Quem assume limpa o recado: ele era da fila, e a conversa saiu dela.
+  perform chat.take_over('11111111-0000-0000-0000-0000000000c3');
+  if (select atribuida_para from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') is not null then
+    raise exception 'FALHOU: assumiu e o recado da fila ficou para trás';
+  end if;
+
+  -- Fora da empresa não se direciona, nem para quem está inativo.
+  perform chat.liberar_para_fila('11111111-0000-0000-0000-0000000000c3');
+  begin
+    perform chat.atribuir_conversa('11111111-0000-0000-0000-0000000000c3',
+                                   '22222222-2222-2222-2222-2222222222bb');
+    raise exception 'FALHOU: direcionou conversa para atendente de outra empresa';
+  exception when others then
+    if sqlstate = 'PT409' then raise; end if;
+  end;
+
+  perform chat.hand_back('11111111-0000-0000-0000-0000000000c3');
+
+  raise notice 'ok: direcionar deixa a conversa na fila e não atravessa empresa';
+end $$;
 reset role;
 
 -- O sistema não tem dono: os prazos rodam sem auth.uid() e não podem esbarrar
@@ -577,6 +634,38 @@ begin
 
   raise notice 'ok: o prazo só corre em expediente, e só na empresa dele';
 end $$;
+
+\echo '=== a presença não atravessa empresa ==='
+
+-- O canal de presença é privado, e privado no Realtime quer dizer autorizado
+-- pela RLS de `realtime.messages`. Sem esta política a tabela nega tudo, e com
+-- ela mal escrita cada empresa veria quem está online nas outras.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111aa","role":"authenticated"}';
+do $$
+begin
+  -- No tópico da própria empresa, entra.
+  perform set_config('realtime.topic', 'presenca:11111111-1111-1111-1111-111111111111', true);
+  insert into realtime.messages (topic, extension, private)
+  values ('presenca:11111111-1111-1111-1111-111111111111', 'presence', true);
+
+  if not exists (select 1 from realtime.messages
+                  where topic = 'presenca:11111111-1111-1111-1111-111111111111') then
+    raise exception 'FALHOU: o agente não enxerga a presença da própria empresa';
+  end if;
+
+  -- No tópico de outra, não.
+  perform set_config('realtime.topic', 'presenca:22222222-2222-2222-2222-222222222222', true);
+  begin
+    insert into realtime.messages (topic, extension, private)
+    values ('presenca:22222222-2222-2222-2222-222222222222', 'presence', true);
+    raise exception 'FALHOU: A entrou no canal de presença de B';
+  exception when insufficient_privilege then null;
+  end;
+
+  raise notice 'ok: cada empresa só vê quem está online nela';
+end $$;
+reset role;
 
 \echo '=== a fila tem prazo próprio ==='
 

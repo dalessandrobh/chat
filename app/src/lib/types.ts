@@ -28,6 +28,15 @@ export interface InboxRow {
   display_phone_number: string | null;
   /** Quando entrou na fila humana sem dono. Nulo quando não está esperando. */
   aguardando_desde: string | null;
+  /** A quem a conversa foi direcionada. Recado, não posse: ela segue na fila. */
+  atribuida_para: string | null;
+  atribuida_para_nome: string | null;
+}
+
+/** Um atendente da empresa, para a lista de direcionamento. */
+export interface AgenteResumo {
+  id: string;
+  full_name: string | null;
 }
 
 export interface Message {

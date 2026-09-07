@@ -142,23 +142,51 @@ Arquivar tira a conversa da lista de trabalho. Não fala com o cliente, e a
 conversa reabre sozinha se ele voltar a escrever — por isso o botão não pede
 posse: quem organiza a lista não está tomando o atendimento de ninguém.
 
+### Direcionar a um atendente
+
+A tentação era usar `assigned_agent_id`: atribuir seria definir o dono. Mas
+definir o dono **tira a conversa da fila** — zera `aguardando_desde`, some do
+contador, desliga o prazo da fila. Direcionar a quem foi almoçar apagaria o
+cliente de todos os lugares onde alguém o veria, em silêncio. É a mesma falha
+que o prazo da fila acabou de corrigir, entrando por outra porta.
+
+Então **atribuir não é ter**. `conversations.atribuida_para` é um recado — "esta
+é para o Clayton" — e a conversa continua na fila, contando, visível para
+todos. A lista mostra "→ para Clayton" junto do tempo de espera, e a aba
+**Minhas** passa a incluir o que foi direcionado a mim. Quem assume de verdade
+continua sendo quem clica em Assumir, e é aí que o cliente é apresentado a
+alguém: direcionar não envia nada, porque para o cliente nada mudou — ele
+continua esperando uma pessoa.
+
+Direcionar uma conversa que você está atendendo devolve-a à fila com o recado:
+passar adiante é sair. Continuar como dono faria a trava de envio recusar o
+próprio destinatário.
+
+Quando alguém assume, o recado se apaga junto com o resto do estado de fila —
+é o mesmo gatilho que zera `aguardando_desde`, porque as duas coisas só existem
+enquanto a conversa está esperando.
+
+### Quem está com o painel aberto
+
+O select de direcionamento marca com ● quem está online, pelo Presence do
+Realtime. É um sinal fraco de propósito — a aba pode estar aberta e a pessoa
+não estar na frente dela — e em lugar nenhum ele decide: só informa.
+
+O canal é `presenca:<empresa>`, e é **privado**, o que no Realtime quer dizer
+autorizado pela RLS de `realtime.messages`. Sem política aquela tabela nega
+tudo, que é o padrão desta instalação; a política da migration deixa cada
+agente entrar apenas no tópico da própria empresa. Sem isso o canal seria
+global e saber quem está online viraria assunto compartilhado entre as
+empresas do painel — e o Realtime desta VPS é o mesmo do dsearch.
+
+O rastreamento fica no layout, não na tela de conversas: quem foi ver um
+template continua com o painel aberto.
+
 ## O que falta
 
 Numeração original da conversa que gerou esta lista, para não confundir quem
 voltar depois.
 
-**Direcionar a um atendente**
-
-9. Ação "Atribuir a…" na barra de handoff, com a lista de agentes ativos.
-   Grava quem atribuiu, além de quem recebeu. Tem uma armadilha: atribuir
-   define o dono, e definir o dono tira a conversa da fila e zera o
-   `aguardando_desde`. Atribuir a quem está almoçando sumiria com o cliente da
-   fila, do contador e do relógio — em silêncio. Por isso anda junto com o 10,
-   ou precisa de um estado "atribuída, ainda não aceita" com relógio próprio.
-10. Presence do Realtime marcando quem está com o painel aberto, para não
-    atribuir conversa a quem não está.
-
-**Prazos e higiene**
-
-14. `unread_count` por atendente. Um agente abrir zera o contador para todos.
+14. `unread_count` por atendente. Um agente abrir zera o contador para todos:
+    `chat.mark_read` zera o campo da conversa, que é um só.
 

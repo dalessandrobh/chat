@@ -64,6 +64,7 @@ enfeite de tela.
 | Agente assume | botão **Assumir conversa** → `chat.take_over()` | `mode='human'`, dono definido, bot silenciado |
 | Agente devolve | botão **Devolver ao bot** → `chat.hand_back()` | `mode='bot'`, sem dono, automação volta |
 | Agente solta | botão **Liberar** → `chat.liberar_para_fila()` | segue `human`, volta a `pending` sem dono, cliente não é avisado |
+| Agente direciona | select **para…** → `chat.atribuir_conversa()` | `atribuida_para` marcado, conversa **continua na fila**, cliente não é avisado |
 | Bot escala sozinho | `POST /api/internal/escalate` | `mode='human'`, `status='pending'`, sem dono |
 | Devolução automática | `bot_resume_at` + `chat.auto_hand_back_expired()` | volta ao bot no horário marcado |
 

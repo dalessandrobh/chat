@@ -1,14 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import type { InboxRow } from "@/lib/types";
+import type { AgenteResumo, InboxRow } from "@/lib/types";
+import { usePresenca } from "@/components/painel/Presenca";
 
-type Acao = "takeover" | "handback" | "release";
+type Acao = "takeover" | "handback" | "release" | "assign";
 
 const ROTULO_FORCADO: Record<Acao, string> = {
   takeover: "Assumir mesmo assim",
   handback: "Devolver mesmo assim",
   release: "Liberar mesmo assim",
+  assign: "Direcionar mesmo assim",
 };
 
 /**
@@ -32,10 +34,12 @@ const ROTULO_FORCADO: Record<Acao, string> = {
 export function HandoffBar({
   row,
   agenteId,
+  agentes,
   onChanged,
 }: {
   row: InboxRow;
   agenteId: string | null;
+  agentes: AgenteResumo[];
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -44,6 +48,10 @@ export function HandoffBar({
   /** Ação que o servidor recusou por conflito, aguardando motivo. */
   const [forcar, setForcar] = useState<Acao | null>(null);
   const [motivo, setMotivo] = useState("");
+  /** Guardado à parte porque o "mesmo assim" precisa repetir a escolha. */
+  const [paraQuem, setParaQuem] = useState<string | null>(null);
+
+  const online = usePresenca();
 
   const isHuman = row.mode === "human";
   const encerrada = row.status === "closed";
@@ -51,13 +59,21 @@ export function HandoffBar({
   const deOutro = isHuman && !!row.assigned_agent_id && !souDono;
   const donoNome = row.assigned_agent_name?.split(" ")[0] ?? "outro atendente";
 
-  async function call(action: Acao, force = false) {
+  /**
+   * `alvo` vem por parâmetro, e não do estado: o select dispara a chamada no
+   * mesmo evento em que muda a escolha, e o estado do React só chegaria na
+   * próxima renderização. Quem força depois reaproveita o que ficou guardado.
+   */
+  async function call(action: Acao, force = false, alvo: string | null = paraQuem) {
     setBusy(true);
     setError(null);
     try {
       const body: Record<string, unknown> = {};
       if (action === "takeover" && resumeMinutes) {
         body.resumeAfterMinutes = Number(resumeMinutes);
+      }
+      if (action === "assign") {
+        body.agentId = alvo;
       }
       if (force) {
         body.force = true;
@@ -81,6 +97,7 @@ export function HandoffBar({
       }
       setForcar(null);
       setMotivo("");
+      setParaQuem(null);
       onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -136,6 +153,33 @@ export function HandoffBar({
             <span className="text-[11px]" style={{ color: "var(--muted)" }}>
               atendida por {donoNome}
             </span>
+          )}
+
+          {/* Direcionar só faz sentido em atendimento humano: uma conversa com
+              a automação não está em fila nenhuma. O ponto verde é presença —
+              sinal fraco, que informa e não decide. */}
+          {isHuman && (
+            <select
+              value={row.atribuida_para ?? ""}
+              onChange={(e) => {
+                const alvo = e.target.value || null;
+                setParaQuem(alvo);
+                void call("assign", false, alvo);
+              }}
+              disabled={busy}
+              title="Direcionar a um atendente. A conversa continua na fila."
+              className="max-w-40 rounded-lg border px-2 py-1.5 text-xs"
+              style={{ background: "var(--bg)", borderColor: "var(--border)" }}
+            >
+              <option value="">sem direcionamento</option>
+              {agentes.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {online.has(a.id) ? "● " : "○ "}
+                  {a.full_name?.split(" ")[0] ?? "sem nome"}
+                  {a.id === agenteId ? " (você)" : ""}
+                </option>
+              ))}
+            </select>
           )}
 
           {souDono && row.bot_resume_at && (
@@ -216,7 +260,9 @@ export function HandoffBar({
               ? `Tomar a conversa de ${donoNome}:`
               : forcar === "release"
                 ? `Devolver à fila a conversa de ${donoNome}:`
-                : `Devolver ao bot a conversa de ${donoNome}:`}
+                : forcar === "assign"
+                  ? `Direcionar a conversa de ${donoNome}:`
+                  : `Devolver ao bot a conversa de ${donoNome}:`}
           </span>
           <input
             value={motivo}
