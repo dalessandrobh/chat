@@ -57,9 +57,10 @@ insert into chat.knowledge (title,content,position,is_active,company_id) values
 
 -- As diretrizes do agente são tão da empresa quanto a base: o perfil de uma
 -- no prompt da outra faria o bot atender em nome de quem não é.
-insert into chat.company_profile (company_id,apresentacao) values
- ('11111111-1111-1111-1111-111111111111','Segredo do perfil de A'),
- ('22222222-2222-2222-2222-222222222222','Segredo do perfil de B');
+insert into chat.company_profile (company_id,apresentacao,horario_semana) values
+ ('11111111-1111-1111-1111-111111111111','Segredo do perfil de A',
+  '{"1":{"abre":"08:00","fecha":"18:00"}}'::jsonb),
+ ('22222222-2222-2222-2222-222222222222','Segredo do perfil de B','{}'::jsonb);
 
 insert into chat.qualification_fields (company_id,chave,pergunta,position) values
  ('11111111-1111-1111-1111-111111111111','pergunta_a','o que só A pergunta',10),
@@ -184,7 +185,63 @@ begin
   raise notice 'ok: diretrizes de A só chegam a A';
 end $$;
 
+-- O horário decide se o cliente ouve "um atendente entra em contato amanhã".
+-- Lido da empresa errada, o aviso sai na hora errada.
+do $$
+declare
+  -- Segunda-feira às 22h em Brasília: fora do expediente de A.
+  v_fora  timestamptz := '2026-09-07 22:00:00-03';
+  v_agora jsonb := chat.horario_de_atendimento('11111111-1111-1111-1111-111111111111', v_fora);
+begin
+  if (v_agora->>'aberta')::boolean or not (v_agora->>'configurado')::boolean then
+    raise exception 'FALHOU: horario_de_atendimento contou a história errada de A';
+  end if;
+
+  begin
+    perform chat.horario_de_atendimento('22222222-2222-2222-2222-222222222222');
+    raise exception 'FALHOU: A leu o expediente de B';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  raise notice 'ok: o expediente de A não vaza para B';
+end $$;
+
 reset role;
+
+\echo '=== o expediente decide a hora certa ==='
+
+-- `empresa_aberta` é peça interna: não é concedida a `authenticated`, então
+-- este bloco roda fora do papel. Quem entra pelo painel usa a de cima.
+do $$
+declare
+  v_dentro timestamptz := '2026-09-07 10:00:00-03';  -- segunda, 10h
+  v_fora   timestamptz := '2026-09-07 22:00:00-03';  -- segunda, 22h
+begin
+  if not chat.empresa_aberta('11111111-1111-1111-1111-111111111111', v_dentro) then
+    raise exception 'FALHOU: A deveria estar aberta na segunda às 10h';
+  end if;
+  if chat.empresa_aberta('11111111-1111-1111-1111-111111111111', v_fora) then
+    raise exception 'FALHOU: A deveria estar fechada na segunda às 22h';
+  end if;
+
+  -- B não cadastrou horário: 24 horas, e nunca um aviso de "volto amanhã".
+  if not chat.empresa_aberta('22222222-2222-2222-2222-222222222222', v_fora) then
+    raise exception 'FALHOU: empresa sem horário cadastrado deixou de ser 24 horas';
+  end if;
+
+  -- A só abre na segunda, então às 22h de segunda a próxima é a segunda
+  -- seguinte. A busca precisa varrer a semana inteira para achá-la.
+  if chat.proxima_abertura('11111111-1111-1111-1111-111111111111', v_fora)
+     <> '2026-09-14 08:00:00-03'::timestamptz then
+    raise exception 'FALHOU: a próxima abertura de A não é a segunda seguinte';
+  end if;
+  if chat.proxima_abertura('22222222-2222-2222-2222-222222222222', v_fora) is not null then
+    raise exception 'FALHOU: empresa 24 horas não tem próxima abertura';
+  end if;
+
+  raise notice 'ok: aberto, fechado e a próxima abertura batem';
+end $$;
 
 \echo '=== o descadastro de A não atinge B ==='
 
@@ -316,6 +373,19 @@ begin
    where company_id in ('11111111-1111-1111-1111-111111111111',
                         '22222222-2222-2222-2222-222222222222');
 
+  -- Fora do expediente o relógio não corre — é o que impede a conversa que
+  -- escalou às 22h de sumir da fila antes de alguém chegar. A abre só na
+  -- segunda, então enquanto o teste não roda numa segunda de manhã nada muda.
+  select count(*) into v_mexeu from chat.aplicar_prazos_de_conversa();
+  if (select status::text from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') = 'closed'
+     and not chat.empresa_aberta('11111111-1111-1111-1111-111111111111') then
+    raise exception 'FALHOU: o prazo correu com a empresa fechada';
+  end if;
+
+  -- Agora com a empresa aberta 24 horas, que é como toda empresa nasce.
+  update chat.company_profile set horario_semana = '{}'::jsonb
+   where company_id = '11111111-1111-1111-1111-111111111111';
+
   select count(*) into v_mexeu from chat.aplicar_prazos_de_conversa();
 
   if (select status::text from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') <> 'closed' then
@@ -325,7 +395,7 @@ begin
     raise exception 'FALHOU: o prazo de A encerrou conversa de B';
   end if;
 
-  raise notice 'ok: cada empresa é encerrada pelo prazo dela, e só';
+  raise notice 'ok: o prazo só corre em expediente, e só na empresa dele';
 end $$;
 
 \echo '=== a tela de Empresa só alcança a própria ==='

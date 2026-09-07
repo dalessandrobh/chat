@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DIAS, FUSOS, PADRAO, type HorarioSemana } from "@/lib/horario-semana";
+
 /**
  * As três camadas do prompt, numa tela só.
  *
@@ -17,7 +19,8 @@ type Perfil = {
   podeExplicar: string;
   nuncaDizer: string;
   quandoEscalar: string;
-  horario: string;
+  horarioSemana: HorarioSemana;
+  fuso: string;
   regiao: string;
   observacoes: string;
   atualizadoEm: string | null;
@@ -215,6 +218,105 @@ function Pergunta({
   );
 }
 
+/**
+ * O horário é o único campo desta tela que a máquina lê.
+ *
+ * Os outros o modelo interpreta; deste sai uma decisão: fora do expediente, a
+ * escalada avisa o cliente de que a equipe só volta no próximo horário. Por
+ * isso é uma grade e não uma frase — "de segunda a sexta, exceto feriado"
+ * não vira comparação com o relógio.
+ *
+ * Semana em branco quer dizer 24 horas, e é assim que a empresa nasce: nunca
+ * avisa nada, exatamente como funcionava antes de existir este campo.
+ */
+function HorarioSemanal({
+  valor,
+  fuso,
+  onChange,
+  onFuso,
+}: {
+  valor: HorarioSemana;
+  fuso: string;
+  onChange: (v: HorarioSemana) => void;
+  onFuso: (v: string) => void;
+}) {
+  const mexer = (d: string, faixa: { abre: string; fecha: string } | null) => {
+    const proximo = { ...valor };
+    if (faixa) proximo[d] = faixa;
+    else delete proximo[d];
+    onChange(proximo);
+  };
+
+  return (
+    <div className="mt-4">
+      <span className="text-sm font-medium">Horário do atendimento humano</span>
+      <p className="mt-0.5 text-sm" style={{ color: "var(--muted)" }}>
+        O bot atende sempre. Fora deste horário, ao chamar um atendente ele avisa
+        o cliente de quando a equipe volta. Semana toda em branco quer dizer que
+        a equipe atende 24 horas.
+      </p>
+
+      <div className="mt-2 space-y-1">
+        {DIAS.map(({ d, rotulo }) => {
+          const faixa = valor[d];
+          return (
+            <div key={d} className="flex items-center gap-3 text-sm">
+              <label className="flex w-28 items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={Boolean(faixa)}
+                  onChange={(e) => mexer(d, e.target.checked ? PADRAO : null)}
+                />
+                {rotulo}
+              </label>
+
+              {faixa ? (
+                <>
+                  <input
+                    type="time"
+                    value={faixa.abre}
+                    onChange={(e) => mexer(d, { ...faixa, abre: e.target.value })}
+                    className="rounded border px-2 py-1"
+                    style={ESTILO_CAMPO}
+                  />
+                  <span style={{ color: "var(--muted)" }}>às</span>
+                  <input
+                    type="time"
+                    value={faixa.fecha}
+                    onChange={(e) => mexer(d, { ...faixa, fecha: e.target.value })}
+                    className="rounded border px-2 py-1"
+                    style={ESTILO_CAMPO}
+                  />
+                </>
+              ) : (
+                <span style={{ color: "var(--muted)" }}>fechado</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <label className="mt-3 block">
+        <span className="text-sm" style={{ color: "var(--muted)" }}>
+          Fuso em que esse horário é lido
+        </span>
+        <select
+          value={fuso}
+          onChange={(e) => onFuso(e.target.value)}
+          className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm"
+          style={ESTILO_CAMPO}
+        >
+          {FUSOS.map((f) => (
+            <option key={f.valor} value={f.valor}>
+              {f.rotulo}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
 export function AgenteClient() {
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [salvo, setSalvo] = useState<Perfil | null>(null);
@@ -340,6 +442,7 @@ export function AgenteClient() {
           <li>Admitir que é um atendimento automático quando perguntarem.</li>
           <li>Nunca terminar calado: toda mensagem do cliente tem resposta.</li>
           <li>Perguntar uma vez só — o que já foi respondido sai da fila.</li>
+          <li>Fora do horário, avisar quando a equipe volta em vez de prometer agora.</li>
         </ul>
       </div>
 
@@ -428,13 +531,11 @@ export function AgenteClient() {
                 max={300}
               />
 
-              <CampoTexto
-                titulo="Horário do atendimento humano"
-                ajuda="Serve para situar o cliente. O bot nunca promete a hora em que alguém responde."
-                valor={perfil.horario}
-                onChange={(v) => editar({ horario: v })}
-                linhas={1}
-                max={200}
+              <HorarioSemanal
+                valor={perfil.horarioSemana}
+                fuso={perfil.fuso}
+                onChange={(v) => editar({ horarioSemana: v })}
+                onFuso={(v) => editar({ fuso: v })}
               />
 
               <CampoTexto

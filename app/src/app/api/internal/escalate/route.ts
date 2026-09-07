@@ -13,6 +13,7 @@ import { z } from "zod";
 import { hasServiceToken } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/messages";
+import { horarioAgora, avisoForaDoHorario } from "@/lib/horario";
 
 const bodySchema = z.object({
   conversationId: z.string().uuid(),
@@ -58,13 +59,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, alreadyHuman: true });
   }
 
+  // Fora do expediente, "vou chamar uma pessoa" é uma promessa que só vence
+  // amanhã. Quem sabe a hora é o servidor — o modelo não sabe, e é por isso
+  // que o aviso é acrescentado aqui e não escrito por ele.
+  //
+  // O complemento vale mesmo sem `message`: a escalada por mídia ilegível já
+  // mandou "estou chamando uma pessoa" antes de chegar nesta rota, e é
+  // justamente essa a frase que precisa de ressalva às onze da noite.
+  const aviso = avisoForaDoHorario(await horarioAgora(before.company_id));
+  const despedida = [message, aviso].filter(Boolean).join("\n\n");
+
   // Falar primeiro, transferir depois. Se o envio falhar, a transferência
   // acontece do mesmo jeito: é pior deixar a conversa presa no bot do que
   // deixá-la sem a mensagem de despedida.
-  if (message) {
+  if (despedida) {
     const enviada = await sendTextMessage({
       conversationId,
-      text: message,
+      text: despedida,
       author: "bot",
     });
     if (!enviada.ok) {

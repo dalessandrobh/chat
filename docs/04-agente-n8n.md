@@ -527,3 +527,69 @@ ruim do produto.
 O botão **ver como o agente recebe** mostra o texto montado pela mesma função
 que alimenta o prompt. É o equivalente, nesta tela, ao painel de conferência
 da Base.
+
+## Horário: o único campo que a máquina lê
+
+Os outros campos do perfil o modelo interpreta. Deste sai uma decisão, tomada
+sem passar pelo modelo — e por isso ele é uma grade de sete dias, não uma
+frase.
+
+O bot atende 24 horas; a equipe, não. Até aqui uma escalada às onze da noite
+dizia "vou chamar uma pessoa" e parava aí. Agora `/api/internal/escalate`
+pergunta ao banco se a empresa está aberta e, se não estiver, emenda na
+mensagem:
+
+> Agora estamos fora do horário de atendimento, mas já deixei sua conversa na
+> fila: um atendente entra em contato amanhã às 08:00.
+
+Quem escreve isso é o servidor, nunca o modelo: ele não sabe que horas são. O
+prompt da plataforma passou a proibir explicitamente qualquer previsão de
+quando alguém responde — inclusive "já já".
+
+### O formato, e o que ele não cobre
+
+```json
+{"1": {"abre": "08:00", "fecha": "18:00"},
+ "6": {"abre": "08:00", "fecha": "12:00"}}
+```
+
+Chave é o dia como o Postgres e o JavaScript contam: `0` é domingo. Dia
+ausente é dia fechado. **Objeto vazio quer dizer 24 horas** — é assim que toda
+empresa nasce, e é o que mantém quem nunca abriu a tela funcionando como
+sempre funcionou.
+
+Um intervalo por dia. Quem fecha para o almoço continua cadastrando
+08:00–18:00: a pausa do almoço não deve fazer o bot dizer "só amanhã".
+Expediente que atravessa a meia-noite não é aceito — `fecha` maior que `abre`
+é regra de banco, porque na prática é erro de digitação.
+
+O fuso é da empresa (`chat.company_profile.fuso`, padrão `America/Sao_Paulo`).
+Errar o fuso é decidir "fechado" na hora errada, então ele é um select com os
+cinco horários do Brasil, e não texto livre.
+
+### Os prazos passam a correr só em expediente
+
+Esta é a metade que faz a promessa valer. `devolver_ao_bot_minutos` está em 30:
+sem mudar nada, a conversa que escalava às 22h voltava ao bot às 22h30, saía
+da fila `pending` e de manhã não havia o que atender — a promessa se desfazia
+meia hora depois de feita.
+
+`chat.aplicar_prazos_de_conversa` ganhou `and p.aberta` nos dois relógios. O
+prazo de inatividade passa a ser de inatividade **em expediente**: 30 minutos
+de sexta às 17h45 vencem na segunda às 08:15, não no sábado de madrugada.
+
+### As funções
+
+| Função | Para quê | Quem chama |
+|---|---|---|
+| `chat.empresa_aberta(id, quando)` | booleano cru | os prazos, e as duas abaixo |
+| `chat.proxima_abertura(id, quando)` | o próximo instante de abertura | o painel, via a de baixo |
+| `chat.horario_de_atendimento(id)` | as duas respostas em JSON, com `assert_same_company` | `lib/horario.ts` |
+| `chat.horario_em_texto(jsonb)` | a grade em português, para o prompt | `render_company_profile` |
+
+As duas primeiras não conferem empresa e por isso não são concedidas a
+`authenticated`: são peças internas, chamadas por quem já conferiu.
+
+Formatar "amanhã às 08:00" fica no TypeScript (`avisoForaDoHorario`), porque é
+texto e não decisão: comparar a data de hoje com a da abertura **no fuso da
+empresa** é o que transforma nove horas de diferença em "amanhã".
