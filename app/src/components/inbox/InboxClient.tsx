@@ -29,11 +29,14 @@ export function InboxClient({
   // --- Carregamento -----------------------------------------------------
 
   const loadRows = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("inbox")
       .select("*")
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .limit(200);
+    // Engolir o erro aqui deixa a fila congelada na tela sem nenhum sinal —
+    // que é exatamente o modo de falhar que não se descobre olhando.
+    if (error) console.error("[inbox] lista não recarregou:", error.message);
     if (data) setRows(data as InboxRow[]);
   }, [supabase]);
 
@@ -60,6 +63,25 @@ export function InboxClient({
     [supabase]
   );
 
+  // A lista não pode depender só do Realtime. A carga do servidor pode chegar
+  // do cache de rota do Next, a inscrição pode cair com a máquina dormindo, e
+  // nos dois casos a fila fica parada sem que ninguém perceba. Recarrega ao
+  // montar, ao a aba voltar ao foco, e de minuto em minuto.
+  useEffect(() => {
+    void loadRows();
+    const aoVoltar = () => {
+      if (document.visibilityState === "visible") void loadRows();
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("focus", aoVoltar);
+    const relogio = setInterval(() => void loadRows(), 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("focus", aoVoltar);
+      clearInterval(relogio);
+    };
+  }, [loadRows]);
+
   useEffect(() => {
     if (!selectedId) {
       setMessages([]);
@@ -73,51 +95,81 @@ export function InboxClient({
   // --- Realtime ---------------------------------------------------------
 
   useEffect(() => {
-    const channel = supabase
-      .channel("chat-inbox")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "chat", table: "messages" },
-        (payload) => {
-          const message = payload.new as Message;
-          // Só anexa se for da conversa aberta; a lista é recarregada de
-          // qualquer forma para atualizar preview e contador.
-          if (message.conversation_id === selectedId) {
-            if (message.agent_id) {
-              // O payload do realtime não traz o join com agents. Anexar cru
-              // faria a resposta de um atendente aparecer sem nome até o
-              // próximo recarregamento — piscando na tela de quem assiste.
-              void loadMessages(selectedId);
-            } else {
-              setMessages((prev) =>
-                prev.some((m) => m.id === message.id) ? prev : [...prev, message]
-              );
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelado = false;
+
+    const abrir = async () => {
+      // O token do usuário precisa alcançar o Realtime ANTES do join. A
+      // inscrição de postgres_changes é registrada no servidor com as claims
+      // que vierem no join, e um join feito com a chave anônima fica preso
+      // nelas: os eventos continuam chegando, mas vazios e marcados
+      // "Error 401: Unauthorized", porque `anon` não enxerga o schema chat.
+      // A sessão do navegador é lida de forma assíncrona, então sem este
+      // await o join sai antes dela em toda carga de página — e a fila para
+      // de andar sozinha, sem erro nenhum na tela.
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (cancelado) return;
+      if (token) await supabase.realtime.setAuth(token);
+      if (cancelado) return;
+
+      channel = supabase
+        .channel("chat-inbox")
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "chat", table: "messages" },
+          (payload) => {
+            // Inscrição sem permissão devolve o registro vazio, com o erro
+            // dentro do próprio payload. Sem isto o evento passaria batido.
+            if (payload.errors?.length) {
+              console.error("[inbox] realtime recusado:", payload.errors.join(", "));
+              void loadRows();
+              return;
             }
+            const message = payload.new as Message;
+            // Só anexa se for da conversa aberta; a lista é recarregada de
+            // qualquer forma para atualizar preview e contador.
+            if (message.conversation_id === selectedId) {
+              if (message.agent_id) {
+                // O payload do realtime não traz o join com agents. Anexar cru
+                // faria a resposta de um atendente aparecer sem nome até o
+                // próximo recarregamento — piscando na tela de quem assiste.
+                void loadMessages(selectedId);
+              } else {
+                setMessages((prev) =>
+                  prev.some((m) => m.id === message.id) ? prev : [...prev, message]
+                );
+              }
+            }
+            void loadRows();
           }
-          void loadRows();
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "chat", table: "messages" },
-        (payload) => {
-          const updated = payload.new as Message;
-          setMessages((prev) =>
-            // Mesma história: o payload não traz o join, e uma simples
-            // confirmação de entrega apagaria o nome de quem respondeu.
-            prev.map((m) => (m.id === updated.id ? { ...updated, agent: m.agent } : m))
-          );
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "chat", table: "conversations" },
-        () => void loadRows()
-      )
-      .subscribe();
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "chat", table: "messages" },
+          (payload) => {
+            if (payload.errors?.length) return;
+            const updated = payload.new as Message;
+            setMessages((prev) =>
+              // Mesma história: o payload não traz o join, e uma simples
+              // confirmação de entrega apagaria o nome de quem respondeu.
+              prev.map((m) => (m.id === updated.id ? { ...updated, agent: m.agent } : m))
+            );
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "chat", table: "conversations" },
+          () => void loadRows()
+        )
+        .subscribe();
+    };
+
+    void abrir();
 
     return () => {
-      void supabase.removeChannel(channel);
+      cancelado = true;
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [supabase, selectedId, loadRows, loadMessages]);
 
