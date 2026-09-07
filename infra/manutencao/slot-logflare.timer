@@ -1,0 +1,11 @@
+[Unit]
+Description=Verifica de hora em hora o WAL retido pelo slot do Logflare
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1h
+# Sem isto, uma máquina que dormiu ou reiniciou pula a verificação em silêncio.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

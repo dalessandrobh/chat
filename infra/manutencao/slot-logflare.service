@@ -1,0 +1,10 @@
+[Unit]
+Description=Derruba o walsender do Logflare quando o slot dele para de andar
+Documentation=https://github.com/dalessandrobh/chat/blob/main/infra/manutencao/slot-logflare.sh
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+Environment=LIMITE_MB=500
+ExecStart=/usr/local/sbin/slot-logflare.sh

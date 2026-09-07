@@ -177,3 +177,47 @@ Se um dia isso pesar — um segundo operador no painel, ou dados de cliente que
 não devam conviver com os do dsearch — o caminho é um projeto no Supabase
 Cloud só para o Chat, não uma segunda stack local. O schema `chat` é
 autocontido: as migrations rodam iguais e só as chaves do `.env` mudam.
+
+## O slot que enche o disco sozinho
+
+O container de analytics do Supabase (Logflare) abre um slot de replicação
+lógica temporário `cainophile_*` no banco `_supabase`, para uma publicação de
+dez tabelas de configuração dele. Ele conecta, fica em `streaming`, responde
+aos keepalives — e nunca informa posição de flush. Em `pg_stat_replication` o
+`flush_lsn` desse walsender fica nulo.
+
+Sem essa confirmação o `restart_lsn` do slot congela no instante da conexão, e
+o Postgres passa a guardar todo o WAL produzido desde ali. Não é o WAL do
+Logflare: é o de tudo, inclusive das mensagens do chat. Cerca de 365 MB por
+dia. Em 07/09/2026 estavam retidos 1,9 GB, e o `catalog_xmin` do slot segurava
+o vacuum dos catálogos 370 mil transações atrás.
+
+O Postgres corta isso sozinho no `max_slot_wal_keep_size` (4 GB), mas só por
+volta do 11º dia — e quando corta, invalida o slot e o CDC do Logflare morre
+até o container reiniciar.
+
+### O timer
+
+`infra/manutencao/` tem o script e as units. O script derruba o walsender
+quando o WAL retido passa de `LIMITE_MB` (500 por padrão): como o slot é
+temporário, ele some junto, e o Logflare reconecta em segundos com um slot
+novo já no LSN atual. Depois vêm dois `checkpoint`, sem os quais o WAL fica no
+disco até o próximo automático.
+
+O filtro pelo nome `cainophile%` é o que protege os slots do Realtime — eles
+se chamam `supabase_realtime*` e nunca entram na consulta.
+
+```bash
+install -m 755 infra/manutencao/slot-logflare.sh /usr/local/sbin/slot-logflare.sh
+install -m 644 infra/manutencao/slot-logflare.{service,timer} /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now slot-logflare.timer
+```
+
+Roda de hora em hora, com `Persistent=true` para não pular a verificação
+depois de um reboot. Para ver o que ele tem feito:
+
+```bash
+systemctl list-timers slot-logflare.timer
+journalctl -u slot-logflare.service -n 20
+```
