@@ -104,6 +104,12 @@ begin
   if exists (select 1 from chat.channels  where company_id = '22222222-2222-2222-2222-222222222222') then
     raise exception 'FALHOU: A vê canal de B';
   end if;
+  -- A view da lista é `security_invoker`, e um `create or replace view` devolve
+  -- as reloptions ao padrão sem avisar. Sem esta linha, a próxima alteração da
+  -- view pode abrir a inbox de todo mundo e passar no resto do teste.
+  if exists (select 1 from chat.inbox where conversation_id = '22222222-0000-0000-0000-0000000000c3') then
+    raise exception 'FALHOU: A vê a conversa de B na lista';
+  end if;
   if exists (select 1 from chat.knowledge where company_id = '22222222-2222-2222-2222-222222222222') then
     raise exception 'FALHOU: A vê a base de B';
   end if;

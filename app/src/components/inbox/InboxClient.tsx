@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import { autenticarRealtime } from "@/lib/supabase/realtime";
+import { porEsperaMaisLonga } from "@/lib/fila";
 import type { InboxRow, Message, Template } from "@/lib/types";
-import { ConversationList } from "./ConversationList";
+import { ConversationList, type Aba } from "./ConversationList";
 import { MessageThread } from "./MessageThread";
 import { HandoffBar } from "./HandoffBar";
 import { Composer } from "./Composer";
@@ -25,6 +27,15 @@ export function InboxClient({
   const [filter, setFilter] = useState("");
   /** Encerradas ficam de fora por padrão: a lista é a fila de trabalho, não o arquivo. */
   const [mostrarEncerradas, setMostrarEncerradas] = useState(false);
+  /**
+   * Abre em "Aguardando" quando há alguém esperando.
+   *
+   * Não é preferência: é a ordem do trabalho. Quem abre o painel com três
+   * clientes na fila não quer decidir por onde começar.
+   */
+  const [aba, setAba] = useState<Aba>(() =>
+    initialRows.some((r) => r.aguardando_desde) ? "aguardando" : "todas"
+  );
 
   const supabase = supabaseBrowser();
 
@@ -101,18 +112,7 @@ export function InboxClient({
     let cancelado = false;
 
     const abrir = async () => {
-      // O token do usuário precisa alcançar o Realtime ANTES do join. A
-      // inscrição de postgres_changes é registrada no servidor com as claims
-      // que vierem no join, e um join feito com a chave anônima fica preso
-      // nelas: os eventos continuam chegando, mas vazios e marcados
-      // "Error 401: Unauthorized", porque `anon` não enxerga o schema chat.
-      // A sessão do navegador é lida de forma assíncrona, então sem este
-      // await o join sai antes dela em toda carga de página — e a fila para
-      // de andar sozinha, sem erro nenhum na tela.
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (cancelado) return;
-      if (token) await supabase.realtime.setAuth(token);
+      await autenticarRealtime(supabase);
       if (cancelado) return;
 
       channel = supabase
@@ -177,17 +177,39 @@ export function InboxClient({
 
   // --- Derivados --------------------------------------------------------
 
+  const contagens = useMemo(
+    () => ({
+      aguardando: rows.filter((r) => r.aguardando_desde).length,
+      minhas: rows.filter((r) => r.assigned_agent_id === agenteId && r.status !== "closed").length,
+      todas: rows.filter((r) => r.status !== "closed").length,
+    }),
+    [rows, agenteId]
+  );
+
   const filtered = useMemo(() => {
     const term = filter.trim().toLowerCase();
-    // A busca alcança o arquivo: quem procura por nome quer achar mesmo que a
-    // conversa já tenha sido encerrada.
-    const base = mostrarEncerradas || term ? rows : rows.filter((r) => r.status !== "closed");
-    if (!term) return base;
-    return base.filter(
-      (r) =>
-        r.contact_name.toLowerCase().includes(term) || r.wa_id.includes(term)
-    );
-  }, [rows, filter, mostrarEncerradas]);
+
+    // A busca alcança o arquivo, e atravessa as abas: quem procura por nome
+    // quer achar, não descobrir que estava na aba errada.
+    if (term) {
+      return rows.filter(
+        (r) => r.contact_name.toLowerCase().includes(term) || r.wa_id.includes(term)
+      );
+    }
+
+    if (aba === "aguardando") {
+      // Do mais antigo para o mais novo, que é o contrário da lista geral: aqui
+      // o que importa não é o que acabou de acontecer, é quem espera há mais
+      // tempo.
+      return rows.filter((r) => r.aguardando_desde).sort(porEsperaMaisLonga);
+    }
+
+    if (aba === "minhas") {
+      return rows.filter((r) => r.assigned_agent_id === agenteId && r.status !== "closed");
+    }
+
+    return mostrarEncerradas ? rows : rows.filter((r) => r.status !== "closed");
+  }, [rows, filter, mostrarEncerradas, aba, agenteId]);
 
   const encerradas = useMemo(() => rows.filter((r) => r.status === "closed").length, [rows]);
 
@@ -211,6 +233,9 @@ export function InboxClient({
         encerradas={encerradas}
         mostrarEncerradas={mostrarEncerradas}
         onMostrarEncerradas={setMostrarEncerradas}
+        aba={aba}
+        onAba={setAba}
+        contagens={contagens}
       />
 
       <section className="flex min-w-0 flex-1 flex-col">

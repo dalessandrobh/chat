@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
 import { canManageKnowledge, canManageTemplates, canManageUsers, roleLabel } from "@/lib/roles";
 import { SairButton } from "@/components/auth/SairButton";
+import { ConversasLink } from "@/components/painel/ConversasLink";
 
 export default async function PainelLayout({
   children,
@@ -69,9 +70,7 @@ export default async function PainelLayout({
         </Link>
 
         <nav className="flex gap-4 text-sm">
-          <Link href="/inbox" className="hover:underline">
-            Conversas
-          </Link>
+          <ConversasLink />
           <Link href="/templates" className="hover:underline">
             Templates
           </Link>

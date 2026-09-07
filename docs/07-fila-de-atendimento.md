@@ -18,27 +18,59 @@ não perder o fio entre uma sessão e outra.
 assumir é exclusivo, tomar de alguém exige motivo e fica registrado, e quem
 não é dono não responde.
 
+### Há quanto tempo o cliente espera
+
+`conversations.aguardando_desde` guarda o instante em que a conversa entrou na
+fila. Quem carimba é o gatilho `chat.marcar_espera`, não quem escreve na
+tabela: esperar é um estado derivado de outros três — humano, sem dono, não
+encerrada — e derivado mantido na mão é derivado que um dia diverge. Assim
+qualquer caminho deixa o carimbo certo, inclusive um `update` feito na mão no
+Studio.
+
+Continuar esperando não reinicia o relógio: uma mensagem nova do cliente não
+apaga os vinte minutos que ele já esperou. Sair da fila zera o campo.
+
+A view `chat.inbox` expõe a coluna, e a lista mostra "AGUARDANDO há 12min" na
+própria etiqueta — sem o tempo, o cliente que chegou agora e o que espera há
+uma hora ficam idênticos na tela.
+
+### Abas, e o que cada uma ordena
+
+**Aguardando** · **Minhas** · **Todas**. A lista abre em Aguardando quando há
+alguém esperando; não é preferência, é a ordem do trabalho.
+
+Aguardando ordena do mais antigo para o mais novo, ao contrário das outras: na
+lista geral importa o que acabou de acontecer, na fila importa quem espera há
+mais tempo. Uma busca por nome atravessa as três abas — quem procura quer
+achar, não descobrir que estava na aba errada.
+
+Conversas esperando ficam com uma barra âmbar à esquerda em qualquer aba, para
+não se perderem no meio das outras.
+
+### Ser avisado
+
+O contador da fila fica no cabeçalho, ao lado de **Conversas**, e por isso vale
+em qualquer tela: quem foi ver um template precisa saber que chegou gente. O
+mesmo número entra no `<title>` da aba, que é o aviso que sobrevive ao painel
+estar em segundo plano.
+
+O sininho ao lado liga som e notificação do navegador. É opt-in por dois
+motivos: o navegador não deixa tocar som sem um gesto do usuário, e a permissão
+de notificação precisa ser pedida a partir de um clique. A preferência fica no
+`localStorage`, por navegador — é de quem está sentado ali, não da conta.
+
+O som é feito na hora com dois osciladores, sem arquivo: o painel não carrega
+nada de fora. A notificação usa sempre a mesma `tag`, então cinco conversas em
+sequência viram uma caixinha atualizada e não cinco empilhadas.
+
+A detecção de "chegou conversa nova" compara os ids da fila com os da carga
+anterior. Na primeira carga não há chegada — há o que já estava lá, e tocar por
+isso seria assustar quem acabou de abrir o painel.
+
 ## O que falta
 
 Numeração original da conversa que gerou esta lista, para não confundir quem
 voltar depois.
-
-**A fila virar fila**
-
-4. Expor na view `chat.inbox` o instante em que a conversa entrou na fila, e
-   mostrar "esperando há 12 min" na lista. Hoje a lista mostra tempo desde a
-   última mensagem, que é outra coisa: quem espera calado afunda abaixo de
-   quem acabou de escrever para o bot.
-5. Abas na lista — **Aguardando** · **Minhas** · **Todas** — com Aguardando
-   ordenada da mais antiga para a mais nova.
-6. Contador de aguardando no menu e no `<title>` da aba.
-
-**Ser avisado**
-
-7. Som e destaque quando uma conversa entra na fila. O evento de Realtime já
-   chega; falta usá-lo.
-8. Notificação do navegador, com permissão pedida uma vez, para o painel em
-   aba de fundo.
 
 **Direcionar a um atendente**
 

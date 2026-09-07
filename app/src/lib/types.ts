@@ -26,6 +26,8 @@ export interface InboxRow {
   tags: string[];
   channel_name: string;
   display_phone_number: string | null;
+  /** Quando entrou na fila humana sem dono. Nulo quando não está esperando. */
+  aguardando_desde: string | null;
 }
 
 export interface Message {
