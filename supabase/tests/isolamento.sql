@@ -499,6 +499,96 @@ begin
   raise notice 'ok: o prazo só corre em expediente, e só na empresa dele';
 end $$;
 
+\echo '=== a fila tem prazo próprio ==='
+
+do $$
+declare v_acoes text[];
+begin
+  -- A seção anterior deixou A aberta 24 horas e sem encerramento útil. Os dois
+  -- prazos ficam curtos de propósito: é o único jeito de provar que o de
+  -- "atendente sumiu" não encosta na conversa que ninguém assumiu.
+  update chat.settings set value = '0'::jsonb
+   where company_id = '11111111-1111-1111-1111-111111111111'
+     and key = 'encerrar_apos_minutos';
+  insert into chat.settings (company_id, key, value) values
+   ('11111111-1111-1111-1111-111111111111', 'devolver_ao_bot_minutos',  '1'::jsonb),
+   ('11111111-1111-1111-1111-111111111111', 'devolver_da_fila_minutos', '1'::jsonb);
+
+  -- Na fila há duas horas, e falando agora: o prazo da fila é de espera, não
+  -- de silêncio. O gatilho sai do caminho porque ele existe justamente para
+  -- não deixar ninguém escrever nesse campo na mão.
+  alter table chat.conversations disable trigger trg_conversations_espera;
+  update chat.conversations
+     set mode = 'human', assigned_agent_id = null, status = 'pending',
+         last_message_at = now(),
+         aguardando_desde = now() - interval '2 hours'
+   where id = '11111111-0000-0000-0000-0000000000c3';
+  alter table chat.conversations enable trigger trg_conversations_espera;
+
+  select array_agg(acao) into v_acoes from chat.aplicar_prazos_de_conversa();
+
+  if not ('fila_expirada' = any(v_acoes)) then
+    raise exception 'FALHOU: o prazo da fila não devolveu quem ninguém assumiu';
+  end if;
+  if 'devolvida' = any(v_acoes) then
+    raise exception 'FALHOU: o prazo de atendente sumiu pegou conversa sem dono';
+  end if;
+  if (select mode::text from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') <> 'bot' then
+    raise exception 'FALHOU: a conversa não voltou ao bot';
+  end if;
+  if (select aguardando_desde from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') is not null then
+    raise exception 'FALHOU: saiu da fila e continuou marcada como esperando';
+  end if;
+
+  -- Agora com dono e parada: é o outro relógio que tem de pegar.
+  update chat.conversations
+     set mode = 'human', assigned_agent_id = '11111111-1111-1111-1111-1111111111aa',
+         status = 'open', last_message_at = now() - interval '2 hours'
+   where id = '11111111-0000-0000-0000-0000000000c3';
+
+  select array_agg(acao) into v_acoes from chat.aplicar_prazos_de_conversa();
+
+  if not ('devolvida' = any(v_acoes)) then
+    raise exception 'FALHOU: o prazo de atendente sumiu não devolveu a conversa dele';
+  end if;
+  if 'fila_expirada' = any(v_acoes) then
+    raise exception 'FALHOU: o prazo da fila pegou conversa que tinha dono';
+  end if;
+
+  raise notice 'ok: cada relógio pega a conversa dele';
+end $$;
+
+-- A âncora do relógio da fila. Sem ela, a conversa que escalou às 22h chega às
+-- 8h com dez horas de espera e é devolvida no primeiro minuto do expediente —
+-- exatamente a conversa a quem o aviso de fora do horário prometeu a manhã.
+do $$
+begin
+  update chat.company_profile
+     set horario_semana = '{"1":{"abre":"08:00","fecha":"18:00"}}'::jsonb
+   where company_id = '11111111-1111-1111-1111-111111111111';
+
+  -- A abre só na segunda. Na segunda às 22h, a última abertura é a daquela
+  -- manhã; no domingo seguinte, ainda é a mesma.
+  if chat.ultima_abertura('11111111-1111-1111-1111-111111111111', '2026-09-07 22:00:00-03')
+     <> '2026-09-07 08:00:00-03'::timestamptz then
+    raise exception 'FALHOU: a última abertura de A não é a manhã da segunda';
+  end if;
+  if chat.ultima_abertura('11111111-1111-1111-1111-111111111111', '2026-09-13 12:00:00-03')
+     <> '2026-09-07 08:00:00-03'::timestamptz then
+    raise exception 'FALHOU: no sábado a última abertura deixou de ser a segunda';
+  end if;
+
+  -- B nunca configurou grade: é aberta 24 horas, e 24 horas não tem abertura.
+  if chat.ultima_abertura('22222222-2222-2222-2222-222222222222') is not null then
+    raise exception 'FALHOU: empresa aberta 24h inventou uma abertura';
+  end if;
+
+  update chat.company_profile set horario_semana = '{}'::jsonb
+   where company_id = '11111111-1111-1111-1111-111111111111';
+
+  raise notice 'ok: o relógio da fila começa a contar quando a empresa abre';
+end $$;
+
 \echo '=== a tela de Empresa só alcança a própria ==='
 
 set local role authenticated;

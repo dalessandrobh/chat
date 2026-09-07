@@ -574,9 +574,18 @@ sem mudar nada, a conversa que escalava às 22h voltava ao bot às 22h30, saía
 da fila `pending` e de manhã não havia o que atender — a promessa se desfazia
 meia hora depois de feita.
 
-`chat.aplicar_prazos_de_conversa` ganhou `and p.aberta` nos dois relógios. O
+`chat.aplicar_prazos_de_conversa` ganhou `and p.aberta` em todos os relógios. O
 prazo de inatividade passa a ser de inatividade **em expediente**: 30 minutos
 de sexta às 17h45 vencem na segunda às 08:15, não no sábado de madrugada.
+
+O prazo da fila (`devolver_da_fila_minutos`, descrito em
+[07-fila-de-atendimento](07-fila-de-atendimento.md)) precisa de mais que isso.
+Ele conta desde `aguardando_desde`, que é hora de relógio: a conversa que
+escalou às 22h chega às 8h com dez horas de espera e venceria no primeiro
+minuto do expediente — exatamente a conversa a quem o aviso de fora do horário
+prometeu a manhã. Por isso o relógio da fila começa em
+`greatest(aguardando_desde, ultima_abertura)`: a espera da madrugada não é
+espera de atendimento.
 
 ### As funções
 
@@ -584,10 +593,11 @@ de sexta às 17h45 vencem na segunda às 08:15, não no sábado de madrugada.
 |---|---|---|
 | `chat.empresa_aberta(id, quando)` | booleano cru | os prazos, e as duas abaixo |
 | `chat.proxima_abertura(id, quando)` | o próximo instante de abertura | o painel, via a de baixo |
+| `chat.ultima_abertura(id, quando)` | a abertura mais recente, olhando para trás | o relógio da fila |
 | `chat.horario_de_atendimento(id)` | as duas respostas em JSON, com `assert_same_company` | `lib/horario.ts` |
 | `chat.horario_em_texto(jsonb)` | a grade em português, para o prompt | `render_company_profile` |
 
-As duas primeiras não conferem empresa e por isso não são concedidas a
+As três primeiras não conferem empresa e por isso não são concedidas a
 `authenticated`: são peças internas, chamadas por quem já conferiu.
 
 Formatar "amanhã às 08:00" fica no TypeScript (`avisoForaDoHorario`), porque é

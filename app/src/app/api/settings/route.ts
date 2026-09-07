@@ -19,6 +19,7 @@ const patchSchema = z.discriminatedUnion("key", [
   // Zero é o desligado: prazo sem número não é prazo, e nulo obrigaria a tela
   // a distinguir "vazio" de "nunca mexeram".
   z.object({ key: z.literal(AJUSTES.devolverAoBot), value: z.number().int().min(0).max(43200) }),
+  z.object({ key: z.literal(AJUSTES.devolverDaFila), value: z.number().int().min(0).max(43200) }),
   z.object({ key: z.literal(AJUSTES.encerrarApos), value: z.number().int().min(0).max(43200) }),
 ]);
 
@@ -42,6 +43,7 @@ export async function GET() {
     lerImagens: porChave[AJUSTES.lerImagens]?.value !== false,
     atualizadoEm: porChave[AJUSTES.lerImagens]?.updated_at ?? null,
     devolverAoBot: numero(AJUSTES.devolverAoBot),
+    devolverDaFila: numero(AJUSTES.devolverDaFila),
     encerrarApos: numero(AJUSTES.encerrarApos),
     /**
      * Sem a chave da Anthropic o ajuste não tem efeito nenhum, e a tela

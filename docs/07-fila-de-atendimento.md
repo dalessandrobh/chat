@@ -67,6 +67,49 @@ A detecção de "chegou conversa nova" compara os ids da fila com os da carga
 anterior. Na primeira carga não há chegada — há o que já estava lá, e tocar por
 isso seria assustar quem acabou de abrir o painel.
 
+### Dois relógios, e o que o cliente ouve quando um vence
+
+`devolver_ao_bot_minutos` valia para qualquer conversa em modo humano, com dono
+ou sem. São duas situações que não se parecem:
+
+| Ajuste | Quando pega | O que o cliente ouve |
+|---|---|---|
+| **Atendente sumiu** (`devolver_ao_bot_minutos`) | conversa **com dono**, parada | que voltou ao atendimento automático |
+| **Ninguém pegou da fila** (`devolver_da_fila_minutos`) | conversa **sem dono**, esperando | que ninguém conseguiu atender, e que pode pedir de novo |
+| **Encerrar por inatividade** (`encerrar_apos_minutos`) | qualquer uma, parada há mais tempo | nada — arquivar é organização interna |
+
+A primeira quer um prazo curto: a conversa está presa numa pessoa que saiu. A
+segunda quer um prazo longo, porque encurtá-lo é tirar da fila quem pediu
+ajuda — com um número só, a equipe ocupada por meia hora perdia o cliente para
+o bot sem ninguém ver.
+
+O prazo da fila é de **espera**, não de silêncio: o cliente que manda três
+mensagens enquanto aguarda continua aguardando. E conta a partir da abertura
+mais recente da empresa, não de quando a conversa entrou na fila — a espera da
+madrugada não é espera de atendimento, e sem isso a conversa que escalou às 22h
+venceria no primeiro minuto do expediente, que é exatamente a conversa a quem o
+aviso de fora do horário prometeu a manhã.
+
+A frase da fila não promete retorno. Quem a escreve é o servidor, e o servidor
+não sabe quando alguém vai chegar:
+
+> Ninguém da equipe conseguiu atender até agora, desculpe a demora. Sigo por
+> aqui pelo atendimento automatizado da {empresa} — me diga o que precisa. Se
+> quiser falar com uma pessoa, é só pedir de novo.
+
+Voltar ao robô calado seria pior: o cliente contaria o problema de novo, do
+zero, sem saber que a primeira tentativa acabou.
+
+Uma conversa que vai ser arquivada no mesmo passo não recebe a frase — ouvir
+"ninguém conseguiu atender" e sumir da lista no mesmo segundo é ruído, não
+aviso.
+
+**Zero desliga**, e é assim que o prazo da fila nasce: ligar um relógio que
+mexe em conversa de cliente sem alguém ter pedido é pior do que não ter o
+relógio. Enquanto estiver em zero, quem pede um atendente espera até alguém
+aparecer — ou até a conversa ser arquivada por inatividade, o que acontece
+calado. A tela de Ajustes diz isso.
+
 ## O que falta
 
 Numeração original da conversa que gerou esta lista, para não confundir quem
@@ -83,10 +126,6 @@ voltar depois.
 
 **Prazos e higiene**
 
-12. Separar o relógio de "o atendente sumiu" do de "ninguém pegou". Hoje os
-    dois usam `devolver_ao_bot_minutos`, então a equipe ocupada por meia hora
-    perde o cliente para o bot sem ninguém ver.
-13. Decidir o que o cliente ouve quando o prazo da fila vence. Hoje, silêncio.
 14. `unread_count` por atendente. Um agente abrir zera o contador para todos.
 15. `HandoffBar` tem `encerrarOuReabrir()` completa, ligada a `/close`, que
     nunca foi renderizada — o botão Encerrar não existe na tela.

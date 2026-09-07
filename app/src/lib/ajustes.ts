@@ -11,8 +11,10 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const AJUSTES = {
   lerImagens: "ler_imagens",
-  /** Minutos parados em atendimento humano até a conversa voltar ao bot. */
+  /** Minutos parados em atendimento humano, com dono, até voltar ao bot. */
   devolverAoBot: "devolver_ao_bot_minutos",
+  /** Minutos na fila sem ninguém assumir até a conversa voltar ao bot. */
+  devolverDaFila: "devolver_da_fila_minutos",
   /** Minutos sem ninguém falar até a conversa ser arquivada. */
   encerrarApos: "encerrar_apos_minutos",
 } as const;

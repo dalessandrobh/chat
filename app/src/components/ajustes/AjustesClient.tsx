@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 interface Ajustes {
   lerImagens: boolean;
   devolverAoBot: number;
+  devolverDaFila: number;
   encerrarApos: number;
   atualizadoEm: string | null;
   temChaveImagem: boolean;
@@ -113,7 +114,10 @@ export function AjustesClient() {
     setSalvando(false);
   }
 
-  async function salvarPrazo(key: "devolver_ao_bot_minutos" | "encerrar_apos_minutos", valor: number) {
+  async function salvarPrazo(
+    key: "devolver_ao_bot_minutos" | "devolver_da_fila_minutos" | "encerrar_apos_minutos",
+    valor: number
+  ) {
     setErro(null);
     setSalvando(true);
     const r = await fetch("/api/settings", {
@@ -228,17 +232,27 @@ export function AjustesClient() {
         >
           <p className="font-medium">Prazos da conversa</p>
           <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
-            Zero desliga. Nada disso é visível para o cliente: encerrar é
-            arquivar, e a conversa reabre sozinha se ele voltar a escrever.
+            Zero desliga. Os dois primeiros falam com o cliente ao vencer;
+            encerrar não fala nada, porque é arquivar — e a conversa reabre
+            sozinha se ele voltar a escrever.
           </p>
 
           <Prazo
-            titulo="Devolver ao bot"
-            explicacao="Minutos parados em atendimento humano até a conversa voltar para o bot. Ele avisa o cliente ao assumir de novo — alguém pediu uma pessoa, e voltar calado é pior do que dizer."
+            titulo="Atendente sumiu"
+            explicacao="Minutos parados numa conversa que alguém assumiu, até ela voltar para o bot. O cliente é avisado de que voltou ao atendimento automático — alguém pediu uma pessoa, e voltar calado é pior do que dizer."
             valor={ajustes.devolverAoBot}
             sugestao={30}
             disabled={salvando}
             onSalvar={(v) => void salvarPrazo("devolver_ao_bot_minutos", v)}
+          />
+
+          <Prazo
+            titulo="Ninguém pegou da fila"
+            explicacao="Minutos esperando na fila sem ninguém assumir, até a conversa voltar para o bot. Conta só o tempo de expediente: quem escalou às 22h começa a esperar às 8h. O cliente ouve que ninguém conseguiu atender e que pode pedir de novo."
+            valor={ajustes.devolverDaFila}
+            sugestao={120}
+            disabled={salvando}
+            onSalvar={(v) => void salvarPrazo("devolver_da_fila_minutos", v)}
           />
 
           <Prazo
@@ -250,15 +264,29 @@ export function AjustesClient() {
             onSalvar={(v) => void salvarPrazo("encerrar_apos_minutos", v)}
           />
 
-          {ajustes.devolverAoBot > 0 &&
-            ajustes.encerrarApos > 0 &&
-            ajustes.encerrarApos <= ajustes.devolverAoBot && (
-              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
-                O prazo de encerrar está menor ou igual ao de devolver: a
-                conversa vai ser arquivada antes de voltar ao bot, e a devolução
-                nunca acontece.
-              </p>
-            )}
+          {ajustes.encerrarApos > 0 &&
+            [
+              { valor: ajustes.devolverAoBot, nome: "Atendente sumiu" },
+              { valor: ajustes.devolverDaFila, nome: "Ninguém pegou da fila" },
+            ]
+              .filter((x) => x.valor > 0 && ajustes.encerrarApos <= x.valor)
+              .map((x) => (
+                <p
+                  key={x.nome}
+                  className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/60 dark:text-amber-200"
+                >
+                  O prazo de encerrar está menor ou igual ao de “{x.nome}”: a
+                  conversa vai ser arquivada antes, e esse prazo nunca acontece.
+                </p>
+              ))}
+
+          {ajustes.devolverDaFila === 0 && (
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
+              Sem prazo de fila, quem pede um atendente espera até alguém
+              aparecer — ou até a conversa ser arquivada por inatividade, o que
+              acontece calado.
+            </p>
+          )}
         </div>
       )}
 

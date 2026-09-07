@@ -43,3 +43,19 @@ export function mensagemTrocouDeAtendente(nomeDoAgente: string | null): string {
 export function mensagemDevolveu(empresa: string): string {
   return `A partir de agora você está sendo atendido pelo atendimento automatizado da ${empresa}.`;
 }
+
+/**
+ * Quando o prazo da fila vence e ninguém assumiu.
+ *
+ * O cliente pediu uma pessoa e não veio ninguém. Voltar ao robô calado seria a
+ * pior versão: ele contaria o problema de novo, do zero, sem saber que a
+ * primeira tentativa acabou. Também não promete retorno — quem escreve isto é
+ * o servidor, e o servidor não sabe quando alguém vai chegar.
+ */
+export function mensagemFilaExpirou(empresa: string): string {
+  return (
+    "Ninguém da equipe conseguiu atender até agora, desculpe a demora. " +
+    `Sigo por aqui pelo atendimento automatizado da ${empresa} — me diga o que ` +
+    "precisa. Se quiser falar com uma pessoa, é só pedir de novo."
+  );
+}
