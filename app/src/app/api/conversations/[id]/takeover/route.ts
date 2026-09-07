@@ -46,13 +46,23 @@ export async function POST(
 
   const supabase = await supabaseServer();
 
-  // Modo e dono anteriores, lidos antes da troca: são o que diz se houve troca
-  // de verdade, e qual das duas apresentações o cliente deve receber.
+  // Dono anterior, lido antes da troca: é o que diz se houve troca de verdade.
   const { data: antes } = await supabase
     .from("conversations")
-    .select("mode, assigned_agent_id")
+    .select("assigned_agent_id")
     .eq("id", id)
     .maybeSingle();
+
+  // Qual das duas apresentações o cliente recebe não depende de quem era o
+  // dono agora, e sim de o cliente já ter falado com alguém nesta conversa.
+  // Uma conversa liberada de volta para a fila fica sem dono sem ter voltado
+  // ao começo: dizer "agora você está sendo atendido por um ser humano" a quem
+  // já estava com um soaria como se tudo tivesse recomeçado do zero.
+  const { count: falasHumanas } = await supabase
+    .from("messages")
+    .select("id", { count: "exact", head: true })
+    .eq("conversation_id", id)
+    .eq("author", "agent");
 
   // A RPC roda como security definer e usa auth.uid() para saber quem assumiu,
   // além de gravar o evento de auditoria em chat.handoff_events.
@@ -74,8 +84,7 @@ export async function POST(
 
   // Só cala quando quem assumiu já era o dono — aí nada mudou para o cliente.
   if (antes && antes.assigned_agent_id !== agent.id) {
-    const trocaDeAtendente = antes.mode === "human" && antes.assigned_agent_id !== null;
-    await avisarCliente(id, agent.id, trocaDeAtendente);
+    await avisarCliente(id, agent.id, (falasHumanas ?? 0) > 0);
   }
 
   return NextResponse.json({ ok: true, conversation: data });

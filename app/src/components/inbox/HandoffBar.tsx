@@ -3,6 +3,14 @@
 import { useState } from "react";
 import type { InboxRow } from "@/lib/types";
 
+type Acao = "takeover" | "handback" | "release";
+
+const ROTULO_FORCADO: Record<Acao, string> = {
+  takeover: "Assumir mesmo assim",
+  handback: "Devolver mesmo assim",
+  release: "Liberar mesmo assim",
+};
+
 /**
  * Controle de quem responde a conversa.
  *
@@ -12,8 +20,14 @@ import type { InboxRow } from "@/lib/types";
  *
  * Assumir é exclusivo. Quando a conversa já tem outro dono o servidor recusa
  * com 409, e a barra troca o botão por "Assumir mesmo assim", que pede um
- * motivo antes de tomar. O mesmo vale para devolver ao bot: encerrar o
- * atendimento de outra pessoa é mais forte do que responder por cima dela.
+ * motivo antes de tomar. O mesmo vale para devolver ao bot e para liberar:
+ * mexer no atendimento de outra pessoa é mais forte do que responder por cima
+ * dela.
+ *
+ * Liberar e devolver não são a mesma coisa, e é por isso que são dois botões.
+ * Devolver religa a automação e despede o cliente; liberar solta a conversa de
+ * volta para a fila, calada, porque quem pediu uma pessoa continua querendo
+ * uma.
  */
 export function HandoffBar({
   row,
@@ -28,7 +42,7 @@ export function HandoffBar({
   const [error, setError] = useState<string | null>(null);
   const [resumeMinutes, setResumeMinutes] = useState<string>("");
   /** Ação que o servidor recusou por conflito, aguardando motivo. */
-  const [forcar, setForcar] = useState<"takeover" | "handback" | null>(null);
+  const [forcar, setForcar] = useState<Acao | null>(null);
   const [motivo, setMotivo] = useState("");
 
   const isHuman = row.mode === "human";
@@ -37,7 +51,7 @@ export function HandoffBar({
   const deOutro = isHuman && !!row.assigned_agent_id && !souDono;
   const donoNome = row.assigned_agent_name?.split(" ")[0] ?? "outro atendente";
 
-  async function call(action: "takeover" | "handback", force = false) {
+  async function call(action: Acao, force = false) {
     setBusy(true);
     setError(null);
     try {
@@ -152,6 +166,20 @@ export function HandoffBar({
             </select>
           )}
 
+          {/* Só quem está com a conversa solta de volta na fila. Para os
+              outros o caminho é assumir — e o servidor recusa igual. */}
+          {isHuman && (souDono || deOutro) && (
+            <button
+              onClick={() => call("release")}
+              disabled={busy}
+              title="Solta a conversa de volta para a fila, sem avisar o cliente"
+              className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:bg-black/[0.03] disabled:opacity-60 dark:hover:bg-white/[0.05]"
+              style={{ borderColor: "var(--border)" }}
+            >
+              Liberar
+            </button>
+          )}
+
           <button
             onClick={() => call(souDono ? "handback" : "takeover")}
             disabled={busy}
@@ -161,6 +189,23 @@ export function HandoffBar({
           >
             {busy ? "…" : souDono ? "Devolver ao bot" : "Assumir conversa"}
           </button>
+
+          {/* Encerrar é arquivar: não fala com o cliente, e a conversa reabre
+              sozinha se ele voltar a escrever. Por isso não pede posse — quem
+              organiza a lista não está tomando o atendimento de ninguém. */}
+          <button
+            onClick={encerrarOuReabrir}
+            disabled={busy}
+            title={
+              encerrada
+                ? "Traz a conversa de volta para a lista"
+                : "Arquiva a conversa. Não avisa o cliente, e ela volta sozinha se ele escrever."
+            }
+            className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:bg-black/[0.03] disabled:opacity-60 dark:hover:bg-white/[0.05]"
+            style={{ borderColor: "var(--border)" }}
+          >
+            {encerrada ? "Reabrir" : "Encerrar"}
+          </button>
         </div>
       </div>
 
@@ -169,7 +214,9 @@ export function HandoffBar({
           <span className="text-xs text-amber-900 dark:text-amber-200">
             {forcar === "takeover"
               ? `Tomar a conversa de ${donoNome}:`
-              : `Devolver ao bot a conversa de ${donoNome}:`}
+              : forcar === "release"
+                ? `Devolver à fila a conversa de ${donoNome}:`
+                : `Devolver ao bot a conversa de ${donoNome}:`}
           </span>
           <input
             value={motivo}
@@ -183,7 +230,7 @@ export function HandoffBar({
             disabled={busy || motivo.trim().length < 3}
             className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-amber-700 disabled:opacity-40"
           >
-            {forcar === "takeover" ? "Assumir mesmo assim" : "Devolver mesmo assim"}
+            {ROTULO_FORCADO[forcar]}
           </button>
           <button
             onClick={() => {

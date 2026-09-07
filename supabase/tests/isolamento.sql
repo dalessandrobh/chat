@@ -148,6 +148,12 @@ begin
   end;
 
   begin
+    perform chat.liberar_para_fila('22222222-0000-0000-0000-0000000000c3', 'invasão');
+    raise exception 'FALHOU: A liberou para a fila a conversa de B';
+  exception when insufficient_privilege then null;
+  end;
+
+  begin
     perform chat.mark_read('22222222-0000-0000-0000-0000000000c3');
     raise exception 'FALHOU: A marcou como lida a conversa de B';
   exception when insufficient_privilege then null;
@@ -438,6 +444,79 @@ begin
   end if;
 
   raise notice 'ok: assumir é exclusivo, tomar deixa rastro, e o dono devolve';
+end $$;
+
+-- Liberar não é devolver ao bot. O cliente pediu uma pessoa e continua
+-- querendo uma: a conversa volta para a fila, não para a automação.
+do $$
+begin
+  begin
+    perform chat.liberar_para_fila('11111111-0000-0000-0000-0000000000c3');
+    raise exception 'FALHOU: liberou uma conversa que está com a automação';
+  exception when sqlstate 'PT409' then null;
+  end;
+
+  perform chat.take_over('11111111-0000-0000-0000-0000000000c3');
+  perform chat.liberar_para_fila('11111111-0000-0000-0000-0000000000c3', 'saindo para o almoço');
+
+  if (select assigned_agent_id from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') is not null then
+    raise exception 'FALHOU: liberar não soltou a conversa';
+  end if;
+  if (select mode::text from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') <> 'human' then
+    raise exception 'FALHOU: liberar devolveu ao bot, que é a outra ação';
+  end if;
+  if (select status::text from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') <> 'pending' then
+    raise exception 'FALHOU: liberou e a conversa não ficou marcada como fila';
+  end if;
+  if (select aguardando_desde from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') is null then
+    raise exception 'FALHOU: voltou para a fila e o relógio da espera não recomeçou';
+  end if;
+  if not exists (
+    select 1 from chat.handoff_events
+     where conversation_id = '11111111-0000-0000-0000-0000000000c3'
+       and from_mode = 'human' and to_mode = 'human'
+       and reason = 'saindo para o almoço'
+  ) then
+    raise exception 'FALHOU: liberar não deixou rastro';
+  end if;
+
+  raise notice 'ok: liberar solta na fila, e não na automação';
+end $$;
+
+-- E a conversa de outro atendente só se solta com motivo, como o resto.
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111aa","role":"authenticated"}';
+do $$
+begin
+  perform chat.take_over('11111111-0000-0000-0000-0000000000c3');
+end $$;
+
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111a2","role":"authenticated"}';
+do $$
+begin
+  begin
+    perform chat.liberar_para_fila('11111111-0000-0000-0000-0000000000c3');
+    raise exception 'FALHOU: liberou a conversa de outro atendente sem motivo';
+  exception when sqlstate 'PT409' then null;
+  end;
+
+  perform chat.liberar_para_fila('11111111-0000-0000-0000-0000000000c3', 'colega saiu sem devolver', true);
+  if (select assigned_agent_id from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') is not null then
+    raise exception 'FALHOU: liberar mesmo assim não soltou a conversa';
+  end if;
+  if not exists (
+    select 1 from chat.handoff_events
+     where conversation_id = '11111111-0000-0000-0000-0000000000c3'
+       and from_agent_id = '11111111-1111-1111-1111-1111111111aa'
+       and reason = 'colega saiu sem devolver'
+  ) then
+    raise exception 'FALHOU: liberar mesmo assim não registrou de quem era';
+  end if;
+
+  -- Volta ao bot para as seções seguintes encontrarem o que esperam.
+  perform chat.take_over('11111111-0000-0000-0000-0000000000c3');
+  perform chat.hand_back('11111111-0000-0000-0000-0000000000c3');
+
+  raise notice 'ok: soltar a conversa de outro pede motivo e fica registrado';
 end $$;
 reset role;
 

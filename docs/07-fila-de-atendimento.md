@@ -110,6 +110,38 @@ relógio. Enquanto estiver em zero, quem pede um atendente espera até alguém
 aparecer — ou até a conversa ser arquivada por inatividade, o que acontece
 calado. A tela de Ajustes diz isso.
 
+### Sair da conversa sem devolvê-la ao bot
+
+São dois botões porque são duas coisas:
+
+- **Devolver ao bot** religa a automação e despede o cliente. Serve para quando
+  o atendimento humano acabou.
+- **Liberar** solta a conversa de volta para a fila, calada, e o dono fica
+  nulo. Serve para quem assumiu por engano, ou precisa sair no meio: o cliente
+  pediu uma pessoa e continua querendo uma, e anunciar um rodízio interno seria
+  ruído, não aviso.
+
+Liberar exige que a conversa esteja em atendimento humano — uma que está com o
+bot não está em fila nenhuma, e mandá-la para lá seria escalar, que é outra
+ação com outro aviso ao cliente. Soltar a conversa de outro atendente segue a
+mesma regra do resto: recusa com `PT409`, e só passa com motivo, que fica no
+`handoff_events` junto com de quem era.
+
+O relógio da fila recomeça do zero ao liberar. A espera anterior acabou no
+momento em que alguém assumiu; o que começa agora é uma espera nova.
+
+Por causa disso, a apresentação ao cliente deixou de olhar para o dono anterior
+e passou a olhar para a conversa: se já existe mensagem de atendente nela, quem
+assume diz que vai **continuar** o atendimento. Uma conversa liberada fica sem
+dono sem ter voltado ao começo, e dizer "agora você está sendo atendido por um
+ser humano" a quem já estava com um soaria como se tudo tivesse recomeçado.
+
+### Encerrar
+
+Arquivar tira a conversa da lista de trabalho. Não fala com o cliente, e a
+conversa reabre sozinha se ele voltar a escrever — por isso o botão não pede
+posse: quem organiza a lista não está tomando o atendimento de ninguém.
+
 ## O que falta
 
 Numeração original da conversa que gerou esta lista, para não confundir quem
@@ -118,14 +150,15 @@ voltar depois.
 **Direcionar a um atendente**
 
 9. Ação "Atribuir a…" na barra de handoff, com a lista de agentes ativos.
-   Grava quem atribuiu, além de quem recebeu.
+   Grava quem atribuiu, além de quem recebeu. Tem uma armadilha: atribuir
+   define o dono, e definir o dono tira a conversa da fila e zera o
+   `aguardando_desde`. Atribuir a quem está almoçando sumiria com o cliente da
+   fila, do contador e do relógio — em silêncio. Por isso anda junto com o 10,
+   ou precisa de um estado "atribuída, ainda não aceita" com relógio próprio.
 10. Presence do Realtime marcando quem está com o painel aberto, para não
-    atribuir conversa a quem está almoçando.
-11. "Liberar para a fila": tira o dono, mantém `pending`, não avisa o cliente.
-    Hoje só existe "Devolver ao bot", que é outra coisa.
+    atribuir conversa a quem não está.
 
 **Prazos e higiene**
 
 14. `unread_count` por atendente. Um agente abrir zera o contador para todos.
-15. `HandoffBar` tem `encerrarOuReabrir()` completa, ligada a `/close`, que
-    nunca foi renderizada — o botão Encerrar não existe na tela.
+
