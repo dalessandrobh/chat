@@ -31,14 +31,22 @@ values ('11111111-1111-1111-1111-1111111111aa','00000000-0000-0000-0000-00000000
        ('22222222-2222-2222-2222-2222222222bb','00000000-0000-0000-0000-000000000000','authenticated','authenticated','b@teste.local','x',now(),now());
 
 -- O gatilho handle_new_user já criou as linhas; aqui só se completa.
+--
+-- `created_at` recuado de propósito: o piso de não lidas de quem nunca abriu a
+-- conversa é a entrada do agente na empresa, e dentro de uma transação `now()`
+-- é o mesmo instante para o agente e para a mensagem — sem recuar, nada seria
+-- "depois" de nada.
 update chat.agents set full_name='Agente A', role='admin', is_active=true,
-       company_id='11111111-1111-1111-1111-111111111111'
+       company_id='11111111-1111-1111-1111-111111111111',
+       created_at = now() - interval '1 day'
  where id='11111111-1111-1111-1111-1111111111aa';
 update chat.agents set full_name='Agente A2', role='agent', is_active=true,
-       company_id='11111111-1111-1111-1111-111111111111'
+       company_id='11111111-1111-1111-1111-111111111111',
+       created_at = now() - interval '1 day'
  where id='11111111-1111-1111-1111-1111111111a2';
 update chat.agents set full_name='Agente B', role='admin', is_active=true,
-       company_id='22222222-2222-2222-2222-222222222222'
+       company_id='22222222-2222-2222-2222-222222222222',
+       created_at = now() - interval '1 day'
  where id='22222222-2222-2222-2222-2222222222bb';
 
 insert into chat.channels (id,name,provider,instance_name,company_id) values
@@ -634,6 +642,65 @@ begin
 
   raise notice 'ok: o prazo só corre em expediente, e só na empresa dele';
 end $$;
+
+\echo '=== o não lido é de cada um ==='
+
+-- Uma seção anterior encerrou esta conversa, e encerrar marca como lida para a
+-- equipe. Apagar a marca é o que dá a esta seção uma linha do tempo própria —
+-- dentro de uma transação `now()` é o mesmo instante para tudo, e comparar
+-- leitura com mensagem exigiria um relógio que não existe aqui.
+delete from chat.conversation_reads
+ where conversation_id = '11111111-0000-0000-0000-0000000000c3';
+
+-- A mensagem entra pelo servidor, como na vida real: a RLS de `messages` não
+-- deixa agente escrever direto, e é ela que garante isso.
+insert into chat.messages (conversation_id, channel_id, direction, type, body, author, company_id)
+values ('11111111-0000-0000-0000-0000000000c3','11111111-0000-0000-0000-0000000000c1',
+        'in','text','chegou agora','contact','11111111-1111-1111-1111-111111111111');
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111aa","role":"authenticated"}';
+do $$
+declare v_a int;
+begin
+  select unread_count into v_a from chat.inbox
+   where conversation_id = '11111111-0000-0000-0000-0000000000c3';
+  if v_a < 1 then
+    raise exception 'FALHOU: a mensagem nova não contou como não lida';
+  end if;
+
+  perform chat.mark_read('11111111-0000-0000-0000-0000000000c3');
+
+  select unread_count into v_a from chat.inbox
+   where conversation_id = '11111111-0000-0000-0000-0000000000c3';
+  if v_a <> 0 then
+    raise exception 'FALHOU: ler não zerou para quem leu';
+  end if;
+end $$;
+
+-- O colega não leu nada, e a lista dele tem de dizer isso.
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111a2","role":"authenticated"}';
+do $$
+declare v_a2 int;
+begin
+  select unread_count into v_a2 from chat.inbox
+   where conversation_id = '11111111-0000-0000-0000-0000000000c3';
+  if v_a2 < 1 then
+    raise exception 'FALHOU: um leu e apagou o aviso do outro';
+  end if;
+
+  -- E a marca de leitura de um não é escrevível pelo outro.
+  begin
+    insert into chat.conversation_reads (conversation_id, agent_id, lido_ate, company_id)
+    values ('11111111-0000-0000-0000-0000000000c3','11111111-1111-1111-1111-1111111111aa',
+            now(),'11111111-1111-1111-1111-111111111111');
+    raise exception 'FALHOU: um agente marcou como lida no lugar do outro';
+  exception when insufficient_privilege or unique_violation then null;
+  end;
+
+  raise notice 'ok: cada um tem o próprio não lido';
+end $$;
+reset role;
 
 \echo '=== a presença não atravessa empresa ==='
 

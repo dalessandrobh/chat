@@ -182,11 +182,38 @@ empresas do painel — e o Realtime desta VPS é o mesmo do dsearch.
 O rastreamento fica no layout, não na tela de conversas: quem foi ver um
 template continua com o painel aberto.
 
+### O não lido é de cada um
+
+`conversations.unread_count` era um número só: o primeiro que abrisse a
+conversa zerava o contador de todo mundo. Numa equipe isso não é um detalhe —
+é a lista dizendo "já viram isso" quando ninguém viu.
+
+O que se guarda agora não é um contador, é **até onde cada um leu**:
+`chat.conversation_reads (conversation_id, agent_id, lido_ate)`. Um contador
+por agente exigiria somar em toda mensagem para todo mundo, e um agente novo
+nasceria com o número errado. Um instante, comparado com as mensagens de
+entrada, dá o número certo para qualquer pessoa — inclusive quem chegou hoje.
+
+Ausência de linha não quer dizer "nada lido". O piso é a entrada do agente na
+empresa: ninguém deve as mensagens que chegaram antes de existir por aqui. As
+conversas que já existiam na virada foram marcadas como lidas para todos —
+estrear o recurso acusando 91 mensagens não lidas seria estreá-lo mentindo.
+
+A marca é de quem leu, e a RLS não deixa um agente escrever a do outro: o
+efeito visível seria a conversa sumir da lista de alguém que nunca a abriu.
+
+Dois casos marcam para a equipe inteira, e os dois têm o mesmo motivo — a
+leitura aconteceu fora do painel, ou a conversa deixou de pedir atenção:
+
+- **o dono respondeu pelo celular**, e o webhook da Evolution não tem como
+  saber de quem foi;
+- **alguém encerrou a conversa**, que é dizer "isto está resolvido".
+
+Como a marca vive em outra tabela, marcar como lida não gera evento de
+`conversations`: a tela recarrega a lista por conta própria depois de abrir a
+conversa, senão o contador ficaria na tela até o próximo evento qualquer.
+
 ## O que falta
 
-Numeração original da conversa que gerou esta lista, para não confundir quem
-voltar depois.
-
-14. `unread_count` por atendente. Um agente abrir zera o contador para todos:
-    `chat.mark_read` zera o campo da conversa, que é um só.
+Nada da lista original. O que vier agora é assunto novo.
 

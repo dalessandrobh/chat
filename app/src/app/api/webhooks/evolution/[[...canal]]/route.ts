@@ -213,7 +213,10 @@ async function handleInboundMessage(event: EvoInboundMessage) {
 
     // Se ele já respondeu, já leu. Sem isso a conversa ficaria marcada como
     // não lida no painel até alguém abrir uma mensagem que não existe mais.
-    await db.from("conversations").update({ unread_count: 0 }).eq("id", conversationId);
+    //
+    // Vale para a equipe inteira, e é o único caso em que a leitura é de
+    // todos: a resposta veio de fora do painel, e não dá para saber de quem.
+    await db.rpc("marcar_lida_para_todos", { p_conversation_id: conversationId });
     return;
   }
 

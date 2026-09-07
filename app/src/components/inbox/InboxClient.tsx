@@ -103,9 +103,14 @@ export function InboxClient({
       return;
     }
     void loadMessages(selectedId);
-    // Zera o contador de não lidas ao abrir a conversa.
-    void supabase.rpc("mark_read", { p_conversation_id: selectedId });
-  }, [selectedId, loadMessages, supabase]);
+    // Abrir a conversa marca como lida — só para quem abriu. Como a marca vive
+    // em outra tabela, nenhum evento de `conversations` chega para avisar a
+    // lista: recarregar aqui é o que faz o contador sumir da tela.
+    void (async () => {
+      await supabase.rpc("mark_read", { p_conversation_id: selectedId });
+      await loadRows();
+    })();
+  }, [selectedId, loadMessages, loadRows, supabase]);
 
   // --- Realtime ---------------------------------------------------------
 
@@ -134,6 +139,12 @@ export function InboxClient({
             // Só anexa se for da conversa aberta; a lista é recarregada de
             // qualquer forma para atualizar preview e contador.
             if (message.conversation_id === selectedId) {
+              // Chegou com a conversa aberta na frente da pessoa: já foi lida.
+              if (message.direction === "in") {
+                void supabase
+                  .rpc("mark_read", { p_conversation_id: selectedId })
+                  .then(() => loadRows());
+              }
               if (message.agent_id) {
                 // O payload do realtime não traz o join com agents. Anexar cru
                 // faria a resposta de um atendente aparecer sem nome até o
