@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabase/server";
+import { currentAgent } from "@/lib/auth";
 import { InboxClient } from "@/components/inbox/InboxClient";
 import type { InboxRow, Template } from "@/lib/types";
 
@@ -7,6 +8,9 @@ export const dynamic = "force-dynamic";
 
 export default async function InboxPage() {
   const supabase = await supabaseServer();
+  // Quem está olhando. A tela precisa saber para distinguir "minha conversa"
+  // de "conversa de outro atendente" — o layout já barrou quem não é agente.
+  const agent = await currentAgent();
 
   // Carga inicial no servidor para a tela já abrir preenchida; a partir daí
   // o Realtime mantém atualizado.
@@ -21,6 +25,7 @@ export default async function InboxPage() {
 
   return (
     <InboxClient
+      agenteId={agent?.id ?? null}
       initialRows={(rows ?? []) as InboxRow[]}
       templates={(templates ?? []) as Template[]}
     />

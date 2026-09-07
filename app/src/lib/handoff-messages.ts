@@ -5,9 +5,10 @@
  * da empresa ou o tom da frase não deveria exigir caçar string espalhada por
  * rotas diferentes.
  *
- * São enviados apenas na troca de verdade — bot → humano e humano → bot.
- * Reassumir uma conversa que já está com humano não avisa nada: o cliente
- * receberia a mesma frase duas vezes sem nada ter mudado para ele.
+ * São enviados quando muda quem está do outro lado: bot → humano, humano →
+ * bot, e também de um atendente para outro. Reassumir a própria conversa não
+ * avisa nada — o cliente receberia a mesma frase duas vezes sem que nada
+ * tivesse mudado para ele.
  */
 
 /** Quando um atendente assume pelo painel. */
@@ -18,6 +19,19 @@ export function mensagemAssumiu(nomeDoAgente: string | null): string {
   return nomeDoAgente?.trim()
     ? `${inicio} Olá, meu nome é ${nomeDoAgente.trim()}.`
     : inicio;
+}
+
+/**
+ * Quando a conversa troca de atendente.
+ *
+ * É outra frase porque é outra situação. O cliente já sabe que está com uma
+ * pessoa; dizer de novo "agora você está sendo atendido por um ser humano"
+ * soaria como se o atendimento tivesse recomeçado do zero.
+ */
+export function mensagemTrocouDeAtendente(nomeDoAgente: string | null): string {
+  return nomeDoAgente?.trim()
+    ? `Olá, meu nome é ${nomeDoAgente.trim()} e vou continuar o seu atendimento a partir de agora.`
+    : "Outro atendente vai continuar o seu atendimento a partir de agora.";
 }
 
 /**

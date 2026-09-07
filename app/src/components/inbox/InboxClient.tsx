@@ -9,9 +9,11 @@ import { HandoffBar } from "./HandoffBar";
 import { Composer } from "./Composer";
 
 export function InboxClient({
+  agenteId,
   initialRows,
   templates,
 }: {
+  agenteId: string | null;
   initialRows: InboxRow[];
   templates: Template[];
 }) {
@@ -214,9 +216,14 @@ export function InboxClient({
       <section className="flex min-w-0 flex-1 flex-col">
         {selected ? (
           <>
-            <HandoffBar row={selected} onChanged={refresh} />
+            <HandoffBar row={selected} agenteId={agenteId} onChanged={refresh} />
             <MessageThread messages={messages} contactName={selected.contact_name} />
-            <Composer row={selected} templates={templates} onSent={refresh} />
+            <Composer
+              row={selected}
+              agenteId={agenteId}
+              templates={templates}
+              onSent={refresh}
+            />
           </>
         ) : (
           <div className="flex flex-1 items-center justify-center">

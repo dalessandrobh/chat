@@ -1,6 +1,10 @@
 /**
  * POST /api/conversations/:id/takeover
  * O agente assume a conversa. A partir daqui o bot não responde mais.
+ *
+ * Assumir é exclusivo: se outra pessoa já está atendendo, a rota recusa com
+ * 409 e o nome de quem está lá. Tomar mesmo assim é possível, mas exige um
+ * motivo — que fica gravado em chat.handoff_events junto com de quem foi.
  */
 
 import { NextResponse } from "next/server";
@@ -9,13 +13,23 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { currentAgent, unauthorized } from "@/lib/auth";
 import { sendTextMessage } from "@/lib/messages";
-import { mensagemAssumiu } from "@/lib/handoff-messages";
+import { mensagemAssumiu, mensagemTrocouDeAtendente } from "@/lib/handoff-messages";
 
-const bodySchema = z.object({
-  reason: z.string().max(500).optional(),
-  /** Minutos até a devolução automática ao bot. Omitir = fica com o humano. */
-  resumeAfterMinutes: z.number().int().min(1).max(10080).optional(),
-});
+const bodySchema = z
+  .object({
+    reason: z.string().max(500).optional(),
+    /** Minutos até a devolução automática ao bot. Omitir = fica com o humano. */
+    resumeAfterMinutes: z.number().int().min(1).max(10080).optional(),
+    /** Tomar a conversa de outro atendente. */
+    force: z.boolean().default(false),
+  })
+  // Tomar a conversa de alguém sem dizer por quê deixaria a auditoria com o
+  // registro do que aconteceu e nenhum registro do motivo — que é justamente
+  // o que alguém vai querer saber depois.
+  .refine((b) => !b.force || (b.reason?.trim().length ?? 0) >= 3, {
+    message: "Diga o motivo para assumir uma conversa de outro atendente",
+    path: ["reason"],
+  });
 
 export async function POST(
   request: Request,
@@ -32,12 +46,11 @@ export async function POST(
 
   const supabase = await supabaseServer();
 
-  // Modo anterior, lido antes da troca: é o que diz se houve troca de verdade.
-  // Reassumir uma conversa que já está com humano não deve reapresentar o
-  // atendente ao cliente.
+  // Modo e dono anteriores, lidos antes da troca: são o que diz se houve troca
+  // de verdade, e qual das duas apresentações o cliente deve receber.
   const { data: antes } = await supabase
     .from("conversations")
-    .select("mode")
+    .select("mode, assigned_agent_id")
     .eq("id", id)
     .maybeSingle();
 
@@ -49,14 +62,20 @@ export async function POST(
     p_resume_after: parsed.data.resumeAfterMinutes
       ? `${parsed.data.resumeAfterMinutes} minutes`
       : null,
+    p_force: parsed.data.force,
   });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    // PT409 é a recusa por já ter dono. Não é erro de quem chamou: é conflito,
+    // e a tela precisa distinguir para oferecer "assumir mesmo assim".
+    const status = error.code === "PT409" ? 409 : 400;
+    return NextResponse.json({ error: error.message, conflict: status === 409 }, { status });
   }
 
-  if (antes?.mode === "bot") {
-    await avisarCliente(id, agent.id);
+  // Só cala quando quem assumiu já era o dono — aí nada mudou para o cliente.
+  if (antes && antes.assigned_agent_id !== agent.id) {
+    const trocaDeAtendente = antes.mode === "human" && antes.assigned_agent_id !== null;
+    await avisarCliente(id, agent.id, trocaDeAtendente);
   }
 
   return NextResponse.json({ ok: true, conversation: data });
@@ -69,16 +88,22 @@ export async function POST(
  * erro faria o painel mostrar fracasso para algo que deu certo. O agente vê
  * a mensagem faltando na thread, que é sinal suficiente.
  */
-async function avisarCliente(conversationId: string, agentId: string) {
+async function avisarCliente(
+  conversationId: string,
+  agentId: string,
+  trocaDeAtendente: boolean
+) {
   const { data: perfil } = await supabaseAdmin()
     .from("agents")
     .select("full_name")
     .eq("id", agentId)
     .maybeSingle();
 
+  const nome = perfil?.full_name ?? null;
+
   const resultado = await sendTextMessage({
     conversationId,
-    text: mensagemAssumiu(perfil?.full_name ?? null),
+    text: trocaDeAtendente ? mensagemTrocouDeAtendente(nome) : mensagemAssumiu(nome),
     author: "agent",
     agentId,
   });

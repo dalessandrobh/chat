@@ -25,12 +25,18 @@ values ('11111111-1111-1111-1111-111111111111', 'Empresa Fantasma A', 'teste-a')
 
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
 values ('11111111-1111-1111-1111-1111111111aa','00000000-0000-0000-0000-000000000000','authenticated','authenticated','a@teste.local','x',now(),now()),
+       -- Uma segunda pessoa na empresa A: sem ela não dá para testar o que
+       -- acontece quando duas mãos vão para a mesma conversa.
+       ('11111111-1111-1111-1111-1111111111a2','00000000-0000-0000-0000-000000000000','authenticated','authenticated','a2@teste.local','x',now(),now()),
        ('22222222-2222-2222-2222-2222222222bb','00000000-0000-0000-0000-000000000000','authenticated','authenticated','b@teste.local','x',now(),now());
 
 -- O gatilho handle_new_user já criou as linhas; aqui só se completa.
 update chat.agents set full_name='Agente A', role='admin', is_active=true,
        company_id='11111111-1111-1111-1111-111111111111'
  where id='11111111-1111-1111-1111-1111111111aa';
+update chat.agents set full_name='Agente A2', role='agent', is_active=true,
+       company_id='11111111-1111-1111-1111-111111111111'
+ where id='11111111-1111-1111-1111-1111111111a2';
 update chat.agents set full_name='Agente B', role='admin', is_active=true,
        company_id='22222222-2222-2222-2222-222222222222'
  where id='22222222-2222-2222-2222-2222222222bb';
@@ -358,6 +364,95 @@ begin
   raise notice 'ok: encerrar fica na própria empresa e não deixa conversa muda';
 end $$;
 reset role;
+
+\echo '=== a conversa tem um dono só ==='
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111aa","role":"authenticated"}';
+do $$
+begin
+  perform chat.take_over('11111111-0000-0000-0000-0000000000c3');
+  if (select assigned_agent_id from chat.conversations where id='11111111-0000-0000-0000-0000000000c3')
+     <> '11111111-1111-1111-1111-1111111111aa' then
+    raise exception 'FALHOU: quem assumiu não ficou como dono';
+  end if;
+  raise notice 'ok: quem assume vira dono';
+end $$;
+
+-- Agora o colega, na mesma empresa e na mesma conversa.
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111a2","role":"authenticated"}';
+do $$
+declare v_dono uuid;
+begin
+  begin
+    perform chat.take_over('11111111-0000-0000-0000-0000000000c3');
+    raise exception 'FALHOU: dois atendentes assumiram a mesma conversa';
+  exception when sqlstate 'PT409' then null;
+  end;
+
+  begin
+    perform chat.hand_back('11111111-0000-0000-0000-0000000000c3');
+    raise exception 'FALHOU: devolveu ao bot a conversa de outro atendente';
+  exception when sqlstate 'PT409' then null;
+  end;
+
+  -- Tomar é possível, mas deixa rastro: quem tomou, de quem, e por quê.
+  perform chat.take_over('11111111-0000-0000-0000-0000000000c3', 'cliente pediu', null, true);
+
+  select assigned_agent_id into v_dono
+    from chat.conversations where id='11111111-0000-0000-0000-0000000000c3';
+  if v_dono <> '11111111-1111-1111-1111-1111111111a2' then
+    raise exception 'FALHOU: assumir mesmo assim não trocou o dono';
+  end if;
+
+  if not exists (
+    select 1 from chat.handoff_events
+     where conversation_id = '11111111-0000-0000-0000-0000000000c3'
+       and agent_id      = '11111111-1111-1111-1111-1111111111a2'
+       and from_agent_id = '11111111-1111-1111-1111-1111111111aa'
+       and reason = 'cliente pediu'
+  ) then
+    raise exception 'FALHOU: a tomada não registrou de quem foi';
+  end if;
+
+  -- Reassumir a própria não tira de ninguém, e não pode dizer que tirou.
+  perform chat.take_over('11111111-0000-0000-0000-0000000000c3', 'de novo');
+  if exists (
+    select 1 from chat.handoff_events
+     where conversation_id = '11111111-0000-0000-0000-0000000000c3'
+       and reason = 'de novo' and from_agent_id is not null
+  ) then
+    raise exception 'FALHOU: reassumir a própria conversa registrou dono anterior';
+  end if;
+
+  -- E o dono devolve sem precisar forçar nada.
+  perform chat.hand_back('11111111-0000-0000-0000-0000000000c3');
+  if (select assigned_agent_id from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') is not null then
+    raise exception 'FALHOU: devolver ao bot não soltou a conversa';
+  end if;
+
+  raise notice 'ok: assumir é exclusivo, tomar deixa rastro, e o dono devolve';
+end $$;
+reset role;
+
+-- O sistema não tem dono: os prazos rodam sem auth.uid() e não podem esbarrar
+-- na regra de posse, senão a conversa esquecida ficaria presa para sempre.
+-- `reset role` devolve o papel, mas não as claims — sem limpar, auth.uid()
+-- continuaria respondendo o último agente e o teste testaria outra coisa.
+set local request.jwt.claims = '';
+do $$
+begin
+  update chat.conversations
+     set mode='human', assigned_agent_id='11111111-1111-1111-1111-1111111111aa'
+   where id='11111111-0000-0000-0000-0000000000c3';
+
+  perform chat.hand_back('11111111-0000-0000-0000-0000000000c3', 'prazo');
+
+  if (select mode::text from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') <> 'bot' then
+    raise exception 'FALHOU: o sistema não conseguiu devolver conversa com dono';
+  end if;
+  raise notice 'ok: sem usuário, a posse não trava o sistema';
+end $$;
 
 \echo '=== o relógio de prazos respeita o prazo de cada empresa ==='
 

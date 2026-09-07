@@ -8,17 +8,24 @@ import { TemplatePicker } from "./TemplatePicker";
 /**
  * Caixa de envio.
  *
- * Dois bloqueios deliberados, para o agente não descobrir o problema só
- * depois da Meta recusar:
- *   - conversa em modo bot: texto desabilitado, com atalho para assumir;
+ * Bloqueios deliberados, para o agente não descobrir o problema só depois de
+ * a Meta recusar — ou, pior, só depois de o cliente receber duas respostas:
+ *   - conversa que não é sua: texto desabilitado, com o nome de quem atende;
+ *   - conversa em modo bot ou ainda sem dono: texto desabilitado, com atalho
+ *     para assumir;
  *   - fora da janela de 24h: texto desabilitado, só template libera.
+ *
+ * O servidor recusa as mesmas coisas. Aqui é só para a recusa chegar antes do
+ * clique, e não depois.
  */
 export function Composer({
   row,
+  agenteId,
   templates,
   onSent,
 }: {
   row: InboxRow;
+  agenteId: string | null;
   templates: Template[];
   onSent: () => void;
 }) {
@@ -27,8 +34,12 @@ export function Composer({
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  const souDono = !!agenteId && row.assigned_agent_id === agenteId;
   const isBot = row.mode === "bot";
-  const blocked = isBot || !row.within_window;
+  const semDono = !isBot && !row.assigned_agent_id;
+  const deOutro = !isBot && !!row.assigned_agent_id && !souDono;
+  const donoNome = row.assigned_agent_name?.split(" ")[0] ?? "Outro atendente";
+  const blocked = !souDono || !row.within_window;
 
   async function post(body: Record<string, unknown>) {
     setSending(true);
@@ -79,7 +90,22 @@ export function Composer({
         </p>
       )}
 
-      {!isBot && !row.within_window && (
+      {semDono && (
+        <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
+          O cliente está esperando um atendente e ninguém assumiu ainda. Clique
+          em <strong>Assumir conversa</strong> para responder.
+        </p>
+      )}
+
+      {deOutro && (
+        <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
+          <strong>{donoNome}</strong> está atendendo esta conversa. Para
+          responder você mesmo, use <strong>Assumir mesmo assim</strong> — o
+          cliente é avisado da troca.
+        </p>
+      )}
+
+      {souDono && !row.within_window && (
         <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
           Passaram-se mais de 24h desde a última mensagem do contato. Só um
           template aprovado reabre a conversa.
@@ -95,7 +121,7 @@ export function Composer({
       <div className="flex items-end gap-2">
         <button
           onClick={() => setPickerOpen(true)}
-          disabled={isBot || approved.length === 0}
+          disabled={!souDono || approved.length === 0}
           title={
             approved.length === 0
               ? "Nenhum template aprovado. Cadastre em Templates."
@@ -120,11 +146,13 @@ export function Composer({
           disabled={blocked || sending}
           rows={1}
           placeholder={
-            isBot
-              ? "Assuma a conversa para responder…"
-              : !row.within_window
-                ? "Janela fechada — envie um template"
-                : "Escreva uma mensagem…"
+            deOutro
+              ? `${donoNome} está atendendo esta conversa…`
+              : !souDono
+                ? "Assuma a conversa para responder…"
+                : !row.within_window
+                  ? "Janela fechada — envie um template"
+                  : "Escreva uma mensagem…"
           }
           className="max-h-32 flex-1 resize-none rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-60"
           style={{ background: "var(--bg)", borderColor: "var(--border)" }}

@@ -61,16 +61,36 @@ enfeite de tela.
 
 | Ação | Como | Efeito |
 |---|---|---|
-| Agente assume | botão **Assumir conversa** → `chat.take_over()` | `mode='human'`, bot silenciado |
-| Agente devolve | botão **Devolver ao bot** → `chat.hand_back()` | `mode='bot'`, automação volta |
+| Agente assume | botão **Assumir conversa** → `chat.take_over()` | `mode='human'`, dono definido, bot silenciado |
+| Agente devolve | botão **Devolver ao bot** → `chat.hand_back()` | `mode='bot'`, sem dono, automação volta |
 | Bot escala sozinho | `POST /api/internal/escalate` | `mode='human'`, `status='pending'`, sem dono |
 | Devolução automática | `bot_resume_at` + `chat.auto_hand_back_expired()` | volta ao bot no horário marcado |
 
-Toda transição é registrada em `chat.handoff_events` — quem, quando e por quê.
+Toda transição é registrada em `chat.handoff_events` — quem, quando, de quem
+(`from_agent_id`) e por quê.
 
-**A trava:** com `mode='human'`, `/api/internal/send` responde `409` com
-`reason: "human_takeover"`. Um workflow atrasado não consegue atropelar o
-atendente no meio da conversa.
+**A trava contra o bot:** com `mode='human'`, `/api/internal/send` responde
+`409` com `reason: "human_takeover"`. Um workflow atrasado não consegue
+atropelar o atendente no meio da conversa.
+
+### A conversa tem um dono só
+
+`assigned_agent_id` não é etiqueta: é permissão. Quem não é o dono não
+responde, e a recusa vem do servidor, não da tela.
+
+- `chat.take_over()` lê a linha com `for update` e recusa com `PT409` se já
+  houver outro dono. Dois cliques simultâneos viram duas execuções em fila, e
+  a segunda já lê o dono que a primeira gravou.
+- `chat.hand_back()` recusa igual: devolver ao bot encerra o atendimento de
+  outra pessoa, o que é mais forte do que responder por cima dela. Quando não
+  há `auth.uid()` — os prazos rodam assim — a regra não se aplica, senão a
+  conversa esquecida ficaria presa para sempre.
+- `POST /api/messages/send` recusa com `409` quando o remetente não é o dono,
+  inclusive quando não há dono nenhum: responder sem assumir deixaria a
+  conversa marcada como fila enquanto alguém já está nela.
+- Tomar a conversa de alguém é possível, com `force` e um motivo obrigatório.
+  O evento guarda quem tomou, de quem, e a justificativa — e o cliente recebe
+  a apresentação do novo atendente, não a de boas-vindas.
 
 ## Schema `chat`
 
