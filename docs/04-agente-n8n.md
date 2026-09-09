@@ -567,6 +567,24 @@ O fuso é da empresa (`chat.company_profile.fuso`, padrão `America/Sao_Paulo`).
 Errar o fuso é decidir "fechado" na hora errada, então ele é um select com os
 cinco horários do Brasil, e não texto livre.
 
+### O horário é da equipe, não do bot
+
+A grade não fecha o atendimento: fecha só a parte humana dele. O bot atende as
+vinte e quatro horas, todos os dias, e é isso que a tela do Agente promete a
+quem preenche a grade.
+
+O modelo, porém, não lia promessa nenhuma — recebia sete linhas de horário sob
+um título e mais nada. Às onze da noite ele concluía o que qualquer um
+concluiria: que estava fechado. Duas frases desfazem isso, uma em cada camada:
+
+- no perfil da empresa, logo abaixo da grade — "é o horário das pessoas, não o
+  seu; fora dele, siga atendendo igual";
+- no prompt da plataforma, a seção **Você não fecha**, que vale mesmo quando a
+  empresa não preencheu grade nenhuma e o bloco do horário nem é escrito.
+
+Só quando for preciso uma pessoa é que o horário importa, e aí quem fala é o
+servidor, com o aviso de quando a equipe volta.
+
 ### Os prazos passam a correr só em expediente
 
 Esta é a metade que faz a promessa valer. `devolver_ao_bot_minutos` está em 30:

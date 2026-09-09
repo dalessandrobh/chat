@@ -249,7 +249,7 @@ function HorarioSemanal({
 
   return (
     <div className="mt-4">
-      <span className="text-sm font-medium">Horário do atendimento humano</span>
+      <span className="text-sm font-medium">Horário da equipe humana</span>
       <p className="mt-0.5 text-sm" style={{ color: "var(--muted)" }}>
         O bot atende sempre. Fora deste horário, ao chamar um atendente ele avisa
         o cliente de quando a equipe volta. Semana toda em branco quer dizer que
@@ -442,6 +442,7 @@ export function AgenteClient() {
           <li>Admitir que é um atendimento automático quando perguntarem.</li>
           <li>Nunca terminar calado: toda mensagem do cliente tem resposta.</li>
           <li>Perguntar uma vez só — o que já foi respondido sai da fila.</li>
+          <li>Nunca fechar: fora do horário da equipe, o bot segue atendendo igual.</li>
           <li>Fora do horário, avisar quando a equipe volta em vez de prometer agora.</li>
         </ul>
       </div>
