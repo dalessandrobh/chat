@@ -13,7 +13,12 @@ import { z } from "zod";
 import { hasServiceToken } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/messages";
-import { horarioAgora, avisoForaDoHorario } from "@/lib/horario";
+import {
+  horarioAgora,
+  avisoForaDoHorario,
+  filaForaDoExpediente,
+  avisoJaDado,
+} from "@/lib/horario";
 
 const bodySchema = z.object({
   conversationId: z.string().uuid(),
@@ -54,8 +59,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
   }
 
-  // Já está com humano: nada a fazer, e não vale poluir a auditoria.
-  if (before.mode === "human") {
+  // Já está com humano: não há transferência a fazer, e repetir o evento só
+  // poluiria a auditoria. Mas ainda pode haver o que dizer.
+  const jaNaFila = before.mode === "human";
+
+  // Com um atendente na conversa, ou com a empresa aberta, a fila é de gente e
+  // o bot não fala: sai calado, como sempre saiu.
+  if (jaNaFila && !(await filaForaDoExpediente(conversationId))) {
     return NextResponse.json({ ok: true, alreadyHuman: true });
   }
 
@@ -66,7 +76,15 @@ export async function POST(request: Request) {
   // O complemento vale mesmo sem `message`: a escalada por mídia ilegível já
   // mandou "estou chamando uma pessoa" antes de chegar nesta rota, e é
   // justamente essa a frase que precisa de ressalva às onze da noite.
-  const aviso = avisoForaDoHorario(await horarioAgora(before.company_id));
+  //
+  // Quem já está na fila pode já ter ouvido o aviso nesta mesma espera. Aí ele
+  // não se repete: o que interessa agora é o `message`, que responde ao que a
+  // pessoa acabou de mandar.
+  const aviso =
+    jaNaFila && (await avisoJaDado(conversationId))
+      ? null
+      : avisoForaDoHorario(await horarioAgora(before.company_id));
+
   const despedida = [message, aviso].filter(Boolean).join("\n\n");
 
   // Falar primeiro, transferir depois. Se o envio falhar, a transferência
@@ -81,6 +99,11 @@ export async function POST(request: Request) {
     if (!enviada.ok) {
       console.error(`[escalate] despedida não enviada: ${enviada.message}`);
     }
+  }
+
+  // A conversa já estava na fila: falar era tudo o que faltava.
+  if (jaNaFila) {
+    return NextResponse.json({ ok: true, alreadyHuman: true });
   }
 
   const { error } = await db

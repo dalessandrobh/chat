@@ -15,6 +15,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTextMessage } from "@/lib/messages";
 import { CONFIRMACAO_SAIDA, pediuParaSair } from "@/lib/opt-out";
 import { enfileirarTurno, enviarTurno, turnoDoBot } from "@/lib/bot-queue";
+import { filaForaDoExpediente } from "@/lib/horario";
 import { entenderMidia } from "@/lib/midia";
 import { credenciaisDoCanal } from "@/lib/canais";
 import {
@@ -220,18 +221,28 @@ async function handleInboundMessage(event: EvoInboundMessage) {
     return;
   }
 
-  // 5. Bot só é acionado em modo bot, com o canal ativo, e se a conversa não
-  //    tiver sido calada por ter outro robô do outro lado.
+  // 5. Quem fala com o cliente agora: o bot, ou ninguém.
   //
-  // A mensagem continua sendo gravada e aparecendo no painel: calar o robô não
-  // esconde o cliente. Quem estiver no painel responde na mão como sempre.
+  // Canal ativo, conversa não calada por ter outro robô do outro lado, e o
+  // atendimento não estando com uma pessoa. A mensagem continua sendo gravada
+  // e aparecendo no painel de qualquer jeito: calar o robô não esconde o
+  // cliente. Quem estiver no painel responde na mão como sempre.
   const { data: conversation } = await db
     .from("conversations")
     .select("id, mode, silenciada_em")
     .eq("id", conversationId)
     .maybeSingle();
 
-  if (conversation?.mode === "bot" && !conversation.silenciada_em && channel.is_active) {
+  if (!conversation || conversation.silenciada_em || !channel.is_active) return;
+
+  // Modo bot é o caminho de sempre, e ele não passa pelo banco de novo: é o
+  // caso de quase toda mensagem, e uma consulta a mais aqui seria uma consulta
+  // a mais em tudo. Fora dele resta o caso novo — a conversa que espera na
+  // fila com a empresa fechada, e que o bot atende até a equipe chegar.
+  const podeResponder =
+    conversation.mode === "bot" || (await filaForaDoExpediente(conversation.id));
+
+  if (podeResponder) {
     // Texto entra na janela; mídia não espera. Ver lib/bot-queue.ts.
     if (event.type === "text") {
       void enfileirarTurno(turnoDoBot(conversation.id, event));

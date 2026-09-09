@@ -221,10 +221,11 @@ function Pergunta({
 /**
  * O horário é o único campo desta tela que a máquina lê.
  *
- * Os outros o modelo interpreta; deste sai uma decisão: fora do expediente, a
- * escalada avisa o cliente de que a equipe só volta no próximo horário. Por
- * isso é uma grade e não uma frase — "de segunda a sexta, exceto feriado"
- * não vira comparação com o relógio.
+ * Os outros o modelo interpreta; deste saem duas decisões: fora do expediente,
+ * a escalada avisa o cliente de que a equipe só volta no próximo horário, e a
+ * conversa continua sendo atendida pelo bot enquanto espera. Por isso é uma
+ * grade e não uma frase — "de segunda a sexta, exceto feriado" não vira
+ * comparação com o relógio.
  *
  * Semana em branco quer dizer 24 horas, e é assim que a empresa nasce: nunca
  * avisa nada, exatamente como funcionava antes de existir este campo.
@@ -252,8 +253,9 @@ function HorarioSemanal({
       <span className="text-sm font-medium">Horário da equipe humana</span>
       <p className="mt-0.5 text-sm" style={{ color: "var(--muted)" }}>
         O bot atende sempre. Fora deste horário, ao chamar um atendente ele avisa
-        o cliente de quando a equipe volta. Semana toda em branco quer dizer que
-        a equipe atende 24 horas.
+        o cliente de quando a equipe volta — e segue conversando com ele até lá,
+        sem tirar a conversa da fila. Semana toda em branco quer dizer que a
+        equipe atende 24 horas.
       </p>
 
       <div className="mt-2 space-y-1">
@@ -444,6 +446,7 @@ export function AgenteClient() {
           <li>Perguntar uma vez só — o que já foi respondido sai da fila.</li>
           <li>Nunca fechar: fora do horário da equipe, o bot segue atendendo igual.</li>
           <li>Fora do horário, avisar quando a equipe volta em vez de prometer agora.</li>
+          <li>Seguir atendendo quem já está na fila enquanto a equipe não chega.</li>
         </ul>
       </div>
 

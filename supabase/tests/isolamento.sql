@@ -276,6 +276,58 @@ begin
   raise notice 'ok: aberto, fechado e a próxima abertura batem';
 end $$;
 
+\echo '=== fora do expediente, quem atende a fila é o bot ==='
+
+-- Escalar às onze da noite deixa a conversa na fila humana, e a equipe só
+-- volta pela manhã. Até lá o bot continua atendendo — senão o aviso de "um
+-- atendente entra em contato amanhã" seria seguido de nove horas de silêncio.
+do $$
+declare
+  v_conversa uuid := '11111111-0000-0000-0000-0000000000c3';
+  v_fora     timestamptz := '2026-09-07 22:00:00-03';  -- segunda, 22h
+  v_dentro   timestamptz := '2026-09-07 10:00:00-03';  -- segunda, 10h
+begin
+  update chat.conversations
+     set mode = 'human', status = 'pending', assigned_agent_id = null
+   where id = v_conversa;
+
+  if not chat.fila_fora_do_expediente(v_conversa, v_fora) then
+    raise exception 'FALHOU: às 22h a fila de A deveria continuar com o bot';
+  end if;
+
+  -- Em expediente a fila é de gente: quem espera pediu uma pessoa, e o bot
+  -- falar por cima seria desfazer o que o cliente pediu.
+  if chat.fila_fora_do_expediente(v_conversa, v_dentro) then
+    raise exception 'FALHOU: com a empresa aberta o bot falou pela fila';
+  end if;
+
+  -- Com dono, nunca. A trava do handoff não tem exceção de horário.
+  update chat.conversations
+     set assigned_agent_id = '11111111-1111-1111-1111-1111111111aa'
+   where id = v_conversa;
+
+  if chat.fila_fora_do_expediente(v_conversa, v_fora) then
+    raise exception 'FALHOU: o bot responderia por cima de um atendente';
+  end if;
+
+  -- E a empresa sem horário cadastrado é 24 horas: nunca há fila fora do
+  -- expediente, porque não há fora do expediente.
+  update chat.conversations
+     set mode = 'human', status = 'pending', assigned_agent_id = null
+   where id = '22222222-0000-0000-0000-0000000000c3';
+
+  if chat.fila_fora_do_expediente('22222222-0000-0000-0000-0000000000c3', v_fora) then
+    raise exception 'FALHOU: empresa 24 horas passou a ter fila fora do expediente';
+  end if;
+
+  -- Devolve as duas ao estado em que as seções seguintes as esperam.
+  update chat.conversations
+     set mode = 'bot', status = 'open', assigned_agent_id = null
+   where id in (v_conversa, '22222222-0000-0000-0000-0000000000c3');
+
+  raise notice 'ok: fora do expediente o bot atende a fila; em expediente, não';
+end $$;
+
 \echo '=== o descadastro de A não atinge B ==='
 
 do $$

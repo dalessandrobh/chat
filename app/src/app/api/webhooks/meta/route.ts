@@ -20,6 +20,7 @@ import {
   type StatusUpdate,
   type TemplateStatusUpdate,
 } from "@/lib/meta/webhook";
+import { filaForaDoExpediente } from "@/lib/horario";
 
 // Precisa do corpo cru para validar a assinatura HMAC.
 export const runtime = "nodejs";
@@ -155,17 +156,26 @@ async function handleInboundMessage(event: InboundMessage) {
     .update({ processed_at: new Date().toISOString() })
     .eq("event_key", event.waMessageId);
 
-  // 5. Encaminhar ao n8n SÓ se a conversa estiver em modo bot e não tiver sido
-  //    calada por ter outro robô do outro lado.
-  //    É aqui que o "assumir conversa" faz efeito: em modo human o bot
-  //    simplesmente não é acionado.
+  // 5. Encaminhar ao n8n só se for a vez do bot, e se a conversa não tiver
+  //    sido calada por ter outro robô do outro lado.
+  //    É aqui que o "assumir conversa" faz efeito: com uma pessoa no
+  //    atendimento o bot simplesmente não é acionado.
   const { data: conversation } = await db
     .from("conversations")
     .select("id, mode, silenciada_em")
     .eq("id", conversationId)
     .maybeSingle();
 
-  if (conversation?.mode === "bot" && !conversation.silenciada_em) {
+  if (!conversation || conversation.silenciada_em) return;
+
+  // Modo bot é o caminho de sempre, e não gasta consulta nova. Fora dele resta
+  // a conversa que espera na fila com a empresa fechada: escalou, foi avisada
+  // de que a equipe volta pela manhã, e até lá continua sendo atendida — senão
+  // o aviso seria seguido de nove horas de silêncio.
+  const podeResponder =
+    conversation.mode === "bot" || (await filaForaDoExpediente(conversation.id));
+
+  if (podeResponder) {
     void forwardToN8n(conversation.id, event);
   }
 }

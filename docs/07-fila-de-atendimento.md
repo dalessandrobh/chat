@@ -110,6 +110,27 @@ relógio. Enquanto estiver em zero, quem pede um atendente espera até alguém
 aparecer — ou até a conversa ser arquivada por inatividade, o que acontece
 calado. A tela de Ajustes diz isso.
 
+### Fora do expediente, quem atende a fila é o bot
+
+A conversa que escala às 22h ouve que um atendente entra em contato pela manhã
+— e, até aqui, ouvia só isso: `mode` virava `human` e os webhooks só acionam a
+automação em modo `bot`. A pergunta seguinte do cliente caía no vazio por nove
+horas, mesmo quando a resposta estava na base.
+
+Então a fila fora do expediente virou um estado em que o bot fala:
+`chat.fila_fora_do_expediente` responde sim para a conversa humana, **sem
+dono**, não arquivada, com a empresa fechada. A conversa não sai da fila —
+segue `pending`, segue contando espera, segue na aba **Aguardando** de manhã. O
+que muda é quem responde enquanto não há ninguém para responder.
+
+Sem dono é o que mantém a trava do projeto de pé: quem assumiu às dez da noite
+assumiu, e o bot não fala por cima. E a trava é reavaliada no envio, não no
+começo do turno — o atendente que assume às 08:00 enquanto o modelo escreve
+ainda ganha um `409`.
+
+Os detalhes de prompt e roteamento estão em
+[04-agente-n8n](04-agente-n8n.md#o-bot-espera-junto).
+
 ### Sair da conversa sem devolvê-la ao bot
 
 São dois botões porque são duas coisas:

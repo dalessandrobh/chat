@@ -22,6 +22,7 @@ import {
   registrarTentativa,
 } from "@/lib/qualificacao";
 import { camposDaEmpresa, perfilDaEmpresa } from "@/lib/diretrizes";
+import { filaForaDoExpediente } from "@/lib/horario";
 
 /** Teto de mensagens no contexto. Conversa de WhatsApp é longa e picotada;
  *  as 40 últimas cobrem o assunto atual sem inflar o prompt. */
@@ -103,10 +104,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     contact?.display_name ?? contact?.profile_name
   );
 
+  // Fora do expediente, a conversa que espera na fila sem dono continua sendo
+  // atendida pelo bot: ela escalou, ouviu que a equipe volta pela manhã, e até
+  // lá quem responde é ele. O workflow lê `podeResponder` no lugar do `mode`
+  // justamente porque esse estado não se lê num campo só.
+  const emEspera =
+    conversation.mode !== "bot" && (await filaForaDoExpediente(conversation.id));
+  const podeResponder = conversation.mode === "bot" || emEspera;
+
   // Servir o contexto é o momento em que a pergunta do topo da fila vai ser
-  // feita, então é aqui que ela conta como tentativa. Só em modo bot: com um
-  // humano na conversa ninguém está perguntando nada em nome do agente.
-  if (conversation.mode === "bot") {
+  // feita, então é aqui que ela conta como tentativa. Só quando é a vez do
+  // bot: com um atendente na conversa ninguém pergunta em nome do agente.
+  if (podeResponder) {
     qualificacao = registrarTentativa(qualificacao, campos);
   }
 
@@ -138,7 +147,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
      * o texto de quem opera não revoga o que faz a ferramenta funcionar.
      */
     perfil,
-    /** O workflow checa isto antes de responder: em `human` ele não fala. */
+    /**
+     * O workflow checa isto antes de responder, no lugar do `mode`: é a vez do
+     * bot em modo `bot` e, fora do expediente, também na conversa que espera
+     * na fila sem dono.
+     */
+    podeResponder,
+    /**
+     * Uma pessoa já foi chamada e a equipe só volta no próximo expediente. O
+     * prompt usa para o agente seguir atendendo sem escalar de novo pelo mesmo
+     * motivo, e sem repetir um aviso que o servidor já deu.
+     */
+    emEspera,
+    /** O modo cru, para quem precisar da verdade sem a exceção de horário. */
     mode: conversation.mode,
     status: conversation.status,
     contact: {

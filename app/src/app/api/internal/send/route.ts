@@ -5,12 +5,17 @@
  * A trava central do projeto está aqui: se a conversa foi assumida por um
  * humano, o bot é recusado. Sem isso, um workflow atrasado poderia responder
  * por cima do atendente no meio do atendimento.
+ *
+ * A trava é reavaliada no envio, e não no começo do turno, e é isso que a
+ * mantém de pé mesmo com a exceção de fora do expediente: se o atendente
+ * assumiu enquanto o modelo escrevia, quem recusa é esta linha.
  */
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { hasServiceToken } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { filaForaDoExpediente } from "@/lib/horario";
 import {
   sendMediaMessage,
   sendTemplateMessage,
@@ -77,7 +82,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
   }
 
-  if (conversation.mode === "human") {
+  // A exceção, e a única: a conversa que espera na fila sem dono com a empresa
+  // fechada. Escalou às onze da noite, ouviu que a equipe volta pela manhã, e
+  // até lá continua sendo atendida pelo bot — recusar aqui seria deixar o
+  // aviso de pé e o resto da conversa mudo. Com dono, ou em expediente, a
+  // trava vale inteira.
+  if (conversation.mode === "human" && !(await filaForaDoExpediente(conversation.id))) {
     // 409, não 403: é um conflito de estado temporário. O workflow deve
     // simplesmente encerrar este ramo, não tratar como erro fatal.
     return NextResponse.json(

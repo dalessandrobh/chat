@@ -540,11 +540,20 @@ pergunta ao banco se a empresa está aberta e, se não estiver, emenda na
 mensagem:
 
 > Agora estamos fora do horário de atendimento, mas já deixei sua conversa na
-> fila: um atendente entra em contato amanhã às 08:00.
+> fila: um atendente entra em contato amanhã a partir das 08:00. Enquanto isso
+> sigo por aqui — se der para ajudar em alguma coisa, é só dizer.
 
 Quem escreve isso é o servidor, nunca o modelo: ele não sabe que horas são. O
 prompt da plataforma passou a proibir explicitamente qualquer previsão de
 quando alguém responde — inclusive "já já".
+
+**"A partir das", e não "às"**: o banco sabe quando a empresa abre, não quando
+alguém vai pegar esta conversa. A hora exata seria uma promessa feita em nome
+de uma pessoa que ainda vai chegar — a mesma que o prompt proíbe o modelo de
+fazer.
+
+A última frase não é gentileza de despedida: é o que vai acontecer de fato na
+próxima pergunta, e está descrito logo abaixo.
 
 ### O formato, e o que ele não cobre
 
@@ -585,6 +594,48 @@ concluiria: que estava fechado. Duas frases desfazem isso, uma em cada camada:
 Só quando for preciso uma pessoa é que o horário importa, e aí quem fala é o
 servidor, com o aviso de quando a equipe volta.
 
+### O bot espera junto
+
+Faltava a outra metade da mesma promessa. Escalar deixa a conversa em
+`human`/`pending`, e os dois webhooks só acionam a automação em modo `bot`; o
+relógio que devolveria a conversa ao bot só corre em expediente, de propósito.
+Somadas, as três coisas produziam isto: o cliente ouvia "um atendente entra em
+contato amanhã a partir das 08:00" e, na pergunta seguinte, ouvia silêncio.
+Nove horas de silêncio — inclusive para o que a base responde, e apesar de o
+prompt mandar seguir respondendo depois de escalar.
+
+Então **a fila fora do expediente passa a ser um estado em que o bot fala**.
+Não é voltar atrás na escalada: a conversa continua `human`, continua
+`pending`, continua contando espera e continua aparecendo na fila de manhã. O
+que muda é quem responde enquanto não há ninguém para responder.
+
+Quem decide é `chat.fila_fora_do_expediente(conversa)` — humano, **sem dono**,
+não arquivada, e a empresa fechada. Sem dono é o que preserva a trava do
+projeto: quem assumiu às dez da noite assumiu, e o bot não fala por cima. E a
+trava é reavaliada no envio, não no começo do turno, então o atendente que
+assume às 08:00 enquanto o modelo escreve ainda ganha um `409`.
+
+Quatro lugares passaram a perguntar isso em vez de olhar só o `mode`:
+
+| Onde | O que muda |
+|---|---|
+| os dois webhooks | encaminham ao n8n também nesse estado |
+| `/api/internal/send` | a única exceção da trava do handoff |
+| `/api/internal/escalate` | escalada de conversa que já está na fila volta a falar, em vez de sair calada |
+| `/…/context` | devolve `podeResponder` e `emEspera`, que o workflow lê no lugar do `mode` |
+
+Modo `bot` continua sendo o caminho de sempre e não gasta consulta nova: a
+pergunta ao banco só acontece quando o modo já não é `bot`, que é a exceção.
+
+No prompt, `emEspera` acende um bloco a mais — *uma pessoa já foi chamada*: o
+agente segue atendendo, não repete o aviso que o servidor já deu, e não chama
+`escalar_para_humano` de novo pelo motivo que já pôs a conversa na fila.
+
+O aviso também não se repete do lado do servidor: uma segunda escalada na
+mesma espera (um áudio ilegível às 22h10, por exemplo) manda só a fala do
+agente. A janela de "já avisei" é `aguardando_desde` — saiu da fila e voltou, é
+outra espera, e a hora mudou.
+
 ### Os prazos passam a correr só em expediente
 
 Esta é a metade que faz a promessa valer. `devolver_ao_bot_minutos` está em 30:
@@ -614,10 +665,14 @@ espera de atendimento.
 | `chat.ultima_abertura(id, quando)` | a abertura mais recente, olhando para trás | o relógio da fila |
 | `chat.horario_de_atendimento(id)` | as duas respostas em JSON, com `assert_same_company` | `lib/horario.ts` |
 | `chat.horario_em_texto(jsonb)` | a grade em português, para o prompt | `render_company_profile` |
+| `chat.fila_fora_do_expediente(conversa, quando)` | a conversa espera na fila e a equipe só volta amanhã | os webhooks, `/send`, `/escalate`, `/context` |
 
-As três primeiras não conferem empresa e por isso não são concedidas a
-`authenticated`: são peças internas, chamadas por quem já conferiu.
+A `authenticated` só são concedidas `horario_de_atendimento` e
+`horario_em_texto`. As outras não conferem empresa nenhuma — são peças
+internas, chamadas por quem já conferiu.
 
-Formatar "amanhã às 08:00" fica no TypeScript (`avisoForaDoHorario`), porque é
-texto e não decisão: comparar a data de hoje com a da abertura **no fuso da
-empresa** é o que transforma nove horas de diferença em "amanhã".
+Formatar "amanhã a partir das 08:00" fica no TypeScript (`avisoForaDoHorario`),
+porque é texto e não decisão: comparar a data de hoje com a da abertura **no
+fuso da empresa** é o que transforma nove horas de diferença em "amanhã". É lá
+também que mora a preposição do dia da semana — "no sábado", "na segunda-feira":
+cinco dias são "-feira" e femininos, dois não.

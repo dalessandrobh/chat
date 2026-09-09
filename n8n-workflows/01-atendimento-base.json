@@ -90,7 +90,7 @@
         440,
         180
       ],
-      "notes": "Marca a conversa como pendente de humano. A partir daqui o bot fica mudo até alguém devolver no painel."
+      "notes": "Marca a conversa como pendente de humano. A partir daqui o bot fica mudo até alguém devolver no painel — a não ser fora do expediente da equipe, quando a conversa segue na fila e o bot continua atendendo até a equipe voltar."
     },
     {
       "parameters": {
