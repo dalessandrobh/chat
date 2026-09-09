@@ -702,6 +702,100 @@ begin
 end $$;
 reset role;
 
+\echo '=== o bot cala diante de outro robô ==='
+
+do $$
+declare v_i int; v_motivo text; v_saidas int;
+begin
+  -- A conversa toda é datada no passado: reativar carimba `now()`, e o marco
+  -- d'água só faz sentido se houver um "antes" dele para perdoar.
+  --
+  -- Gente repetindo: "bom dia" três vezes, com respostas nossas no meio. Não
+  -- pode calar — é o falso positivo que custaria um cliente de verdade.
+  for v_i in 1..3 loop
+    insert into chat.messages (conversation_id, channel_id, direction, type, body, author, company_id, created_at)
+    values ('11111111-0000-0000-0000-0000000000c3','11111111-0000-0000-0000-0000000000c1',
+            'in','text','Bom dia','contact','11111111-1111-1111-1111-111111111111',
+            now() - interval '20 minutes' + make_interval(secs => v_i * 20));
+    insert into chat.messages (conversation_id, channel_id, direction, type, body, author, company_id, created_at)
+    values ('11111111-0000-0000-0000-0000000000c3','11111111-0000-0000-0000-0000000000c1',
+            'out','text','Bom dia! Como posso ajudar?','bot','11111111-1111-1111-1111-111111111111',
+            now() - interval '20 minutes' + make_interval(secs => v_i * 20 + 5));
+  end loop;
+
+  if (select silenciada_em from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') is not null then
+    raise exception 'FALHOU: calou uma pessoa que só repetiu bom dia';
+  end if;
+
+  -- Agora o robô: a mesma frase, com o número do protocolo mudando, e resposta
+  -- em segundos. É o que os dados de produção mostraram.
+  select count(*) into v_saidas from chat.messages
+   where conversation_id = '11111111-0000-0000-0000-0000000000c3' and direction = 'out';
+
+  for v_i in 1..3 loop
+    insert into chat.messages (conversation_id, channel_id, direction, type, body, author, company_id, created_at)
+    values ('11111111-0000-0000-0000-0000000000c3','11111111-0000-0000-0000-0000000000c1',
+            'out','text','Posso ajudar com aquecedores?','bot','11111111-1111-1111-1111-111111111111',
+            now() - interval '10 minutes' + make_interval(secs => v_i * 20));
+    insert into chat.messages (conversation_id, channel_id, direction, type, body, author, company_id, created_at)
+    values ('11111111-0000-0000-0000-0000000000c3','11111111-0000-0000-0000-0000000000c1',
+            'in','text','Seu protocolo de atendimento é: ' || (28970 + v_i),
+            'contact','11111111-1111-1111-1111-111111111111',
+            now() - interval '10 minutes' + make_interval(secs => v_i * 20 + 3));
+  end loop;
+
+  select silenciada_motivo into v_motivo
+    from chat.conversations where id='11111111-0000-0000-0000-0000000000c3';
+
+  if v_motivo is null then
+    raise exception 'FALHOU: não reconheceu o robô do outro lado';
+  end if;
+
+  -- Calar é tudo o que se faz: nenhuma mensagem de despedida, que seria só
+  -- mais uma volta no laço. As três saídas são as que este teste escreveu.
+  if (select count(*) from chat.messages
+       where conversation_id = '11111111-0000-0000-0000-0000000000c3'
+         and direction = 'out') <> v_saidas + 3 then
+    raise exception 'FALHOU: calar escreveu mensagem';
+  end if;
+
+  raise notice 'ok: cala o robô e não cala a pessoa';
+end $$;
+
+-- Reativar dá ao bot uma chance de verdade: a repetição de antes do marco
+-- d'água não pode calar tudo de novo no segundo seguinte.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111aa","role":"authenticated"}';
+do $$
+begin
+  perform chat.reativar_bot('11111111-0000-0000-0000-0000000000c3');
+  if (select silenciada_em from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') is not null then
+    raise exception 'FALHOU: reativar não devolveu a palavra ao bot';
+  end if;
+
+  begin
+    perform chat.reativar_bot('22222222-0000-0000-0000-0000000000c3');
+    raise exception 'FALHOU: A reativou o bot na conversa de B';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+
+do $$
+begin
+  -- Uma mensagem nova, sozinha, não recria o laço antigo.
+  insert into chat.messages (conversation_id, channel_id, direction, type, body, author, company_id, created_at)
+  values ('11111111-0000-0000-0000-0000000000c3','11111111-0000-0000-0000-0000000000c1',
+          'in','text','Oi, quero um orçamento','contact','11111111-1111-1111-1111-111111111111',
+          now() + interval '1 second');
+
+  if (select silenciada_em from chat.conversations where id='11111111-0000-0000-0000-0000000000c3') is not null then
+    raise exception 'FALHOU: calou de novo pela repetição que já tinha sido perdoada';
+  end if;
+
+  raise notice 'ok: reativar dá ao bot uma chance de verdade';
+end $$;
+
 \echo '=== a presença não atravessa empresa ==='
 
 -- O canal de presença é privado, e privado no Realtime quer dizer autorizado

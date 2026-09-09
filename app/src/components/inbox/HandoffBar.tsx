@@ -106,6 +106,23 @@ export function HandoffBar({
     }
   }
 
+  async function reativarBot() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/conversations/${row.conversation_id}/reactivate`, {
+        method: "POST",
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error ?? "Falha na operação");
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** Encerrar e reabrir usam outro método na mesma rota. */
   async function encerrarOuReabrir() {
     setBusy(true);
@@ -252,6 +269,23 @@ export function HandoffBar({
           </button>
         </div>
       </div>
+
+      {row.silenciada_em && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-gray-100 px-3 py-2 dark:bg-gray-800">
+          <span className="text-xs" style={{ color: "var(--muted)" }}>
+            🤖 O bot parou de responder aqui. {row.silenciada_motivo}
+          </span>
+          <button
+            onClick={reativarBot}
+            disabled={busy}
+            title="Volta a deixar o bot responder nesta conversa"
+            className="ml-auto rounded-lg border px-3 py-1 text-xs font-medium transition hover:bg-black/[0.03] disabled:opacity-60 dark:hover:bg-white/[0.05]"
+            style={{ borderColor: "var(--border)" }}
+          >
+            Reativar o bot
+          </button>
+        </div>
+      )}
 
       {forcar && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 dark:bg-amber-950/60">

@@ -155,16 +155,17 @@ async function handleInboundMessage(event: InboundMessage) {
     .update({ processed_at: new Date().toISOString() })
     .eq("event_key", event.waMessageId);
 
-  // 5. Encaminhar ao n8n SÓ se a conversa estiver em modo bot.
+  // 5. Encaminhar ao n8n SÓ se a conversa estiver em modo bot e não tiver sido
+  //    calada por ter outro robô do outro lado.
   //    É aqui que o "assumir conversa" faz efeito: em modo human o bot
   //    simplesmente não é acionado.
   const { data: conversation } = await db
     .from("conversations")
-    .select("id, mode")
+    .select("id, mode, silenciada_em")
     .eq("id", conversationId)
     .maybeSingle();
 
-  if (conversation?.mode === "bot") {
+  if (conversation?.mode === "bot" && !conversation.silenciada_em) {
     void forwardToN8n(conversation.id, event);
   }
 }

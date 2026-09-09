@@ -31,6 +31,9 @@ export interface InboxRow {
   /** A quem a conversa foi direcionada. Recado, não posse: ela segue na fila. */
   atribuida_para: string | null;
   atribuida_para_nome: string | null;
+  /** Quando o bot parou de responder por reconhecer outro robô do outro lado. */
+  silenciada_em: string | null;
+  silenciada_motivo: string | null;
 }
 
 /** Um atendente da empresa, para a lista de direcionamento. */

@@ -220,18 +220,18 @@ async function handleInboundMessage(event: EvoInboundMessage) {
     return;
   }
 
-  // 5. Bot só é acionado em modo bot, e só se o canal não estiver pausado.
+  // 5. Bot só é acionado em modo bot, com o canal ativo, e se a conversa não
+  //    tiver sido calada por ter outro robô do outro lado.
   //
-  // A mensagem continua sendo gravada e aparecendo no painel: pausar um
-  // número cala o robô, não esconde o cliente. Quem estiver no painel
-  // responde na mão como sempre.
+  // A mensagem continua sendo gravada e aparecendo no painel: calar o robô não
+  // esconde o cliente. Quem estiver no painel responde na mão como sempre.
   const { data: conversation } = await db
     .from("conversations")
-    .select("id, mode")
+    .select("id, mode, silenciada_em")
     .eq("id", conversationId)
     .maybeSingle();
 
-  if (conversation?.mode === "bot" && channel.is_active) {
+  if (conversation?.mode === "bot" && !conversation.silenciada_em && channel.is_active) {
     // Texto entra na janela; mídia não espera. Ver lib/bot-queue.ts.
     if (event.type === "text") {
       void enfileirarTurno(turnoDoBot(conversation.id, event));

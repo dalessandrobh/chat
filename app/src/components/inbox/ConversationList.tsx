@@ -19,6 +19,18 @@ function relativeTime(iso: string | null): string {
 
 /** Etiqueta de quem está no comando da conversa. */
 function ModeBadge({ row }: { row: InboxRow }) {
+  // Calada vem antes de tudo: dizer BOT numa conversa em que o bot não fala
+  // seria a lista mentindo sobre quem está atendendo — que é ninguém.
+  if (row.silenciada_em) {
+    return (
+      <span
+        title={row.silenciada_motivo ?? undefined}
+        className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+      >
+        🤖 CALADA
+      </span>
+    );
+  }
   if (row.mode === "bot") {
     return (
       <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
