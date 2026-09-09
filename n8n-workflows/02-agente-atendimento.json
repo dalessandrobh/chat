@@ -1,4 +1,5 @@
 {
+  "id": "FgBOoDi3qRDgVFZM",
   "name": "Chat — Agente de atendimento",
   "nodes": [
     {
@@ -14,12 +15,12 @@
       "typeVersion": 2,
       "position": [
         -720,
-        300
+        144
       ],
       "webhookId": "chat-inbound",
       "credentials": {
         "httpHeaderAuth": {
-          "id": "chat-service-token",
+          "id": "OdrT8rHiEb2lBu2j",
           "name": "Chat — token de serviço"
         }
       },
@@ -34,8 +35,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -500,
-        300
+        -496,
+        144
       ]
     },
     {
@@ -43,6 +44,8 @@
         "conditions": {
           "options": {
             "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
             "version": 2
           },
           "conditions": [
@@ -66,17 +69,17 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -280,
-        300
+        -272,
+        144
       ],
       "notes": "Mídia que o painel conseguiu ler chega com texto e segue pelo caminho normal."
     },
     {
       "parameters": {
-        "method": "GET",
         "url": "=http://chat-app:3000/api/internal/conversations/{{ $json.conversationId }}/context",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
+        "provideSslCertificates": "={{ false }}",
         "options": {}
       },
       "id": "contexto",
@@ -84,12 +87,12 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -60,
-        200
+        -48,
+        48
       ],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "chat-service-token",
+          "id": "OdrT8rHiEb2lBu2j",
           "name": "Chat — token de serviço"
         }
       },
@@ -100,6 +103,8 @@
         "conditions": {
           "options": {
             "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
             "version": 2
           },
           "conditions": [
@@ -123,8 +128,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        160,
-        200
+        176,
+        48
       ],
       "notes": "Não basta o modo: fora do expediente a conversa que espera na fila sem dono continua sendo atendida pelo bot. Quem soma modo, dono e horário é o /context."
     },
@@ -141,8 +146,8 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
       "position": [
-        400,
-        200
+        464,
+        208
       ]
     },
     {
@@ -157,9 +162,15 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
       "typeVersion": 1.2,
       "position": [
-        330,
-        420
+        408,
+        424
       ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "dnkzfpmM7p5ZpfqY",
+          "name": "Anthropic account"
+        }
+      },
       "notes": "Sem temperature/topP/topK de propósito: o Claude 5 recusa parâmetros de amostragem, e o nó só os omite quando ficam sem valor."
     },
     {
@@ -170,16 +181,6 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
-        "specifyBody": "keypair",
-        "placeholderDefinitions": {
-          "values": [
-            {
-              "name": "message",
-              "description": "A mensagem que o cliente recebe agora, a última antes de uma pessoa assumir. Comece respondendo o que ele acabou de perguntar, se a base permitir responder, e termine avisando que você vai chamar alguém. Sem nada a responder, só o aviso. Nunca prometa horário.",
-              "type": "string"
-            }
-          ]
-        },
         "parametersBody": {
           "values": [
             {
@@ -193,8 +194,16 @@
               "value": "O agente pediu ajuda humana"
             },
             {
+              "name": "message"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
               "name": "message",
-              "valueProvider": "modelRequired"
+              "description": "A mensagem que o cliente recebe agora, a última antes de uma pessoa assumir. Comece respondendo o que ele acabou de perguntar, se a base permitir responder, e termine avisando que você vai chamar alguém. Sem nada a responder, só o aviso. Nunca prometa horário.",
+              "type": "string"
             }
           ]
         }
@@ -204,12 +213,12 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        530,
-        420
+        536,
+        424
       ],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "chat-service-token",
+          "id": "OdrT8rHiEb2lBu2j",
           "name": "Chat — token de serviço"
         }
       }
@@ -222,7 +231,6 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
-        "specifyBody": "keypair",
         "parametersBody": {
           "values": [
             {
@@ -255,12 +263,12 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        700,
-        420
+        664,
+        424
       ],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "chat-service-token",
+          "id": "OdrT8rHiEb2lBu2j",
           "name": "Chat — token de serviço"
         }
       }
@@ -281,12 +289,12 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1056,
-        176
+        1312,
+        208
       ],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "chat-service-token",
+          "id": "OdrT8rHiEb2lBu2j",
           "name": "Chat — token de serviço"
         }
       },
@@ -314,12 +322,12 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -60,
-        420
+        -48,
+        240
       ],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "chat-service-token",
+          "id": "OdrT8rHiEb2lBu2j",
           "name": "Chat — token de serviço"
         }
       },
@@ -347,12 +355,12 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        160,
-        420
+        176,
+        240
       ],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "chat-service-token",
+          "id": "OdrT8rHiEb2lBu2j",
           "name": "Chat — token de serviço"
         }
       },
@@ -365,8 +373,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        400,
-        60
+        528,
+        -96
       ],
       "notes": "Uma pessoa está no atendimento, ou a fila é de gente porque a equipe está em expediente. Nos dois casos o bot cala."
     },
@@ -398,8 +406,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        832,
-        256
+        1088,
+        304
       ],
       "id": "tem-resposta",
       "name": "Tem resposta?"
@@ -426,12 +434,12 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1056,
-        368
+        1312,
+        400
       ],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "chat-service-token",
+          "id": "OdrT8rHiEb2lBu2j",
           "name": "Chat — token de serviço"
         }
       },
@@ -465,7 +473,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        608,
+        864,
         208
       ],
       "id": "ja-escalou",
@@ -476,8 +484,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        832,
-        64
+        1088,
+        112
       ],
       "id": "fim-escalou",
       "name": "Escalado — encerra"
@@ -646,7 +654,8 @@
     }
   },
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "binaryMode": "separate"
   },
   "pinData": {}
 }
