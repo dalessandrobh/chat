@@ -108,6 +108,11 @@ export default async function PainelLayout({
           <Link href="/canais" className="hover:underline">
             Canais
           </Link>
+          {/* Sem trava de papel: quem atende é quem topa com o número que não
+              devia estar escrevendo. */}
+          <Link href="/bloqueios" className="hover:underline">
+            Bloqueios
+          </Link>
           {canManageUsers(agent.role) && (
             <Link href="/usuarios" className="hover:underline">
               Usuários

@@ -71,9 +71,11 @@ enfeite de tela.
 Toda transição é registrada em `chat.handoff_events` — quem, quando, de quem
 (`from_agent_id`) e por quê.
 
-**A trava contra outro robô:** uma conversa com `silenciada_em` preenchida não
-aciona o n8n. É a defesa contra dois atendimentos automáticos conversando entre
-si, descrita em [08-conversa-com-robo](08-conversa-com-robo.md).
+**A trava contra quem não é cliente:** uma conversa com `silenciada_em` ou
+`bloqueado_em` preenchido não aciona o n8n — a primeira é a detecção automática
+de outro robô do outro lado, a segunda é um número bloqueado por alguém da
+equipe. Bloqueada, a conversa também sai da view `chat.inbox`. As duas em
+[08-robo-e-bloqueio](08-robo-e-bloqueio.md).
 
 **A trava contra o bot:** com `mode='human'`, `/api/internal/send` responde
 `409` com `reason: "human_takeover"`. Um workflow atrasado não consegue

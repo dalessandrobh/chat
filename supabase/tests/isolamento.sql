@@ -796,6 +796,89 @@ begin
   raise notice 'ok: reativar dá ao bot uma chance de verdade';
 end $$;
 
+\echo '=== bloquear um número tira ele da frente de todo mundo ==='
+
+-- Quem bloqueia é o atendente comum, não o administrador: a exigência é ser
+-- agente ativo da empresa, e A2 é 'agent'.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111a2","role":"authenticated"}';
+do $$
+begin
+  -- O contato de A está gravado como 5500000000001; bloqueia-se digitando
+  -- sem o país, como gente digita.
+  perform chat.bloquear_numero('00000000001', 'spam');
+
+  if not exists (select 1 from chat.blocked_numbers
+                  where company_id = '11111111-1111-1111-1111-111111111111') then
+    raise exception 'FALHOU: atendente não conseguiu bloquear';
+  end if;
+
+  if (select bloqueado_em from chat.conversations
+       where id='11111111-0000-0000-0000-0000000000c3') is null then
+    raise exception 'FALHOU: bloqueou o número e a conversa continuou solta';
+  end if;
+
+  if exists (select 1 from chat.inbox
+              where conversation_id = '11111111-0000-0000-0000-0000000000c3') then
+    raise exception 'FALHOU: a conversa bloqueada continua na lista';
+  end if;
+
+  -- O bloqueio é da empresa que bloqueou. B tem um contato com o mesmo
+  -- número, e ele não pode ser atingido.
+  if (select bloqueado_em from chat.conversations
+       where id='22222222-0000-0000-0000-0000000000c3') is not null then
+    raise exception 'FALHOU: o bloqueio de A alcançou a conversa de B';
+  end if;
+
+  raise notice 'ok: atendente bloqueia, e o bloqueio para na empresa dele';
+end $$;
+reset role;
+
+-- Mensagem nova de número bloqueado não ressuscita a conversa na lista.
+do $$
+begin
+  insert into chat.messages (conversation_id, channel_id, direction, type, body, author, company_id, created_at)
+  values ('11111111-0000-0000-0000-0000000000c3','11111111-0000-0000-0000-0000000000c1',
+          'in','text','oi de novo','contact','11111111-1111-1111-1111-111111111111',
+          now() + interval '10 seconds');
+
+  if (select bloqueado_em from chat.conversations
+       where id='11111111-0000-0000-0000-0000000000c3') is null then
+    raise exception 'FALHOU: uma mensagem nova desfez o bloqueio';
+  end if;
+
+  raise notice 'ok: o bloqueado escreve e continua invisível';
+end $$;
+
+-- E o mesmo celular com o 9 da operadora é o mesmo celular.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111a2","role":"authenticated"}';
+do $$
+begin
+  if chat.chave_de_numero('5500000000001') <> chat.chave_de_numero('550000000001') then
+    raise exception 'FALHOU: o 9 da operadora virou outro número';
+  end if;
+
+  -- Desbloquear devolve a conversa à lista sem apagar nada.
+  perform chat.desbloquear_numero('5500000000001');
+
+  if exists (select 1 from chat.blocked_numbers
+              where company_id = '11111111-1111-1111-1111-111111111111') then
+    raise exception 'FALHOU: desbloquear não tirou o número da lista';
+  end if;
+  if not exists (select 1 from chat.inbox
+                  where conversation_id = '11111111-0000-0000-0000-0000000000c3') then
+    raise exception 'FALHOU: desbloqueou e a conversa não voltou';
+  end if;
+  if not exists (select 1 from chat.messages
+                  where conversation_id = '11111111-0000-0000-0000-0000000000c3') then
+    raise exception 'FALHOU: bloquear apagou o histórico';
+  end if;
+
+  raise notice 'ok: desbloquear devolve a conversa com o histórico inteiro';
+end $$;
+reset role;
+
 \echo '=== a presença não atravessa empresa ==='
 
 -- O canal de presença é privado, e privado no Realtime quer dizer autorizado

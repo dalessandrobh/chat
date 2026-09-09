@@ -50,6 +50,9 @@ export function HandoffBar({
   const [motivo, setMotivo] = useState("");
   /** Guardado à parte porque o "mesmo assim" precisa repetir a escolha. */
   const [paraQuem, setParaQuem] = useState<string | null>(null);
+  /** Bloquear some com a conversa da tela: vale confirmar antes. */
+  const [confirmandoBloqueio, setConfirmandoBloqueio] = useState(false);
+  const [motivoBloqueio, setMotivoBloqueio] = useState("");
 
   const online = usePresenca();
 
@@ -98,6 +101,30 @@ export function HandoffBar({
       setForcar(null);
       setMotivo("");
       setParaQuem(null);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function bloquear() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/blocks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          waId: row.wa_id,
+          reason: motivoBloqueio.trim() || undefined,
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error ?? "Falha ao bloquear");
+      setConfirmandoBloqueio(false);
+      setMotivoBloqueio("");
       onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -251,6 +278,16 @@ export function HandoffBar({
             {busy ? "…" : souDono ? "Devolver ao bot" : "Assumir conversa"}
           </button>
 
+          <button
+            onClick={() => setConfirmandoBloqueio((v) => !v)}
+            disabled={busy}
+            title="Bloquear este número: some da lista e o bot não responde mais"
+            className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:bg-black/[0.03] disabled:opacity-60 dark:hover:bg-white/[0.05]"
+            style={{ borderColor: "var(--border)" }}
+          >
+            Bloquear
+          </button>
+
           {/* Encerrar é arquivar: não fala com o cliente, e a conversa reabre
               sozinha se ele voltar a escrever. Por isso não pede posse — quem
               organiza a lista não está tomando o atendimento de ninguém. */}
@@ -269,6 +306,36 @@ export function HandoffBar({
           </button>
         </div>
       </div>
+
+      {confirmandoBloqueio && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-red-50 px-3 py-2 dark:bg-red-950/60">
+          <span className="text-xs text-red-900 dark:text-red-200">
+            Bloquear +{row.wa_id}? Some da lista e o bot não responde mais. Nada
+            é apagado — dá para desbloquear em Bloqueios.
+          </span>
+          <input
+            value={motivoBloqueio}
+            onChange={(e) => setMotivoBloqueio(e.target.value)}
+            placeholder="motivo (opcional)"
+            className="min-w-40 flex-1 rounded-lg border px-2 py-1 text-xs outline-none"
+            style={{ background: "var(--bg)", borderColor: "var(--border)" }}
+          />
+          <button
+            onClick={bloquear}
+            disabled={busy}
+            className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-red-700 disabled:opacity-40"
+          >
+            Bloquear
+          </button>
+          <button
+            onClick={() => setConfirmandoBloqueio(false)}
+            className="text-xs underline"
+            style={{ color: "var(--muted)" }}
+          >
+            cancelar
+          </button>
+        </div>
+      )}
 
       {row.silenciada_em && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg bg-gray-100 px-3 py-2 dark:bg-gray-800">
