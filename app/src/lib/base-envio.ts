@@ -34,3 +34,22 @@ export const MOTIVO_FORA: Record<string, string> = {
  * pessoa expressou, e a linha é a prova de que ela expressou.
  */
 export const EXIGE_CONFIRMACAO = "opt_out";
+
+/**
+ * O número em forma comparável: país + DDD + os oito dígitos finais.
+ *
+ * O 9 que a operadora acrescentou não é uma diferença de número — o WhatsApp
+ * guarda o mesmo celular como 553598059605 e 5535998059605 conforme a época e
+ * o aparelho, e comparar pelo texto cru deixa a mesma pessoa entrar duas vezes
+ * e receber a mesma campanha duas vezes.
+ *
+ * Espelha `chat.chave_de_numero`, do 0033, que é quem manda: o banco compara
+ * a base inteira por lá. Esta cópia serve para achar o repetido **dentro da
+ * planilha que está sendo importada**, antes de ela chegar ao banco.
+ */
+export function chaveDeNumero(bruto: string): string {
+  const d = (bruto ?? "").replace(/[^0-9]/g, "");
+  if (/^55[0-9]{10,11}$/.test(d)) return d.slice(0, 4) + d.slice(-8);
+  if (/^[0-9]{10,11}$/.test(d)) return "55" + d.slice(0, 2) + d.slice(-8);
+  return d;
+}

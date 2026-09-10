@@ -19,7 +19,7 @@ import { canManageKnowledge } from "@/lib/roles";
 import { FUSOS, HORA, type HorarioSemana } from "@/lib/horario-semana";
 
 const COLUNAS =
-  "apresentacao, tom, pode_explicar, nunca_dizer, quando_escalar, horario_semana, fuso, regiao, observacoes, updated_at";
+  "nome_do_bot, apresentacao, tom, pode_explicar, nunca_dizer, quando_escalar, horario_semana, fuso, regiao, observacoes, updated_at";
 
 /**
  * O horário é a única parte do perfil que a máquina lê, não só o modelo: é
@@ -37,6 +37,8 @@ const horarioSchema = z
 /** Os mesmos tetos do banco. Aqui eles viram mensagem em português; lá são a
  *  garantia de que nenhum outro caminho grava um prompt de 40 mil caracteres. */
 const putSchema = z.object({
+  /** Como a automação se chama. Vazio volta a ser "bot" no painel. */
+  nomeDoBot: z.string().trim().max(40).default(""),
   apresentacao: z.string().trim().max(1000).default(""),
   tom: z.enum(["informal", "neutro", "formal"]).default("neutro"),
   podeExplicar: z.string().trim().max(1000).default(""),
@@ -49,6 +51,7 @@ const putSchema = z.object({
 });
 
 type Linha = {
+  nome_do_bot: string;
   apresentacao: string;
   tom: string;
   pode_explicar: string;
@@ -62,6 +65,7 @@ type Linha = {
 };
 
 const vazio: Linha = {
+  nome_do_bot: "",
   apresentacao: "",
   tom: "neutro",
   pode_explicar: "",
@@ -77,6 +81,7 @@ const vazio: Linha = {
 function paraTela(linha: Linha, rendered: string) {
   return {
     perfil: {
+      nomeDoBot: linha.nome_do_bot ?? "",
       apresentacao: linha.apresentacao,
       tom: linha.tom,
       podeExplicar: linha.pode_explicar,
@@ -141,6 +146,7 @@ export async function PUT(request: Request) {
   const { error } = await supabase.from("company_profile").upsert(
     {
       company_id: agent.company_id,
+      nome_do_bot: d.nomeDoBot,
       apresentacao: d.apresentacao,
       tom: d.tom,
       pode_explicar: d.podeExplicar,

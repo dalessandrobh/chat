@@ -14,6 +14,7 @@ import { DIAS, FUSOS, PADRAO, type HorarioSemana } from "@/lib/horario-semana";
  */
 
 type Perfil = {
+  nomeDoBot: string;
   apresentacao: string;
   tom: "informal" | "neutro" | "formal";
   podeExplicar: string;
@@ -477,6 +478,26 @@ export function AgenteClient() {
             </p>
 
             <div className="mt-4">
+              {/* Antes de tudo, porque é como ele é chamado — no painel e
+                  pelo cliente. Em branco continua sendo "bot", que é como
+                  sempre foi. */}
+              <label className="block">
+                <span className="text-sm font-medium">Nome do atendimento</span>
+                <p className="mt-0.5 text-sm" style={{ color: "var(--muted)" }}>
+                  Como a automação se chama. Aparece no painel no lugar de
+                  “BOT”, e o próprio bot passa a atender por esse nome. Em
+                  branco, continua “bot”.
+                </p>
+                <input
+                  value={perfil.nomeDoBot}
+                  onChange={(e) => editar({ nomeDoBot: e.target.value })}
+                  maxLength={40}
+                  placeholder="Ex.: Eddy"
+                  className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm sm:w-64"
+                  style={ESTILO_CAMPO}
+                />
+              </label>
+
               <CampoTexto
                 titulo="Sobre a empresa"
                 ajuda="Duas linhas: o que ela vende e para quem. É como o bot se situa."

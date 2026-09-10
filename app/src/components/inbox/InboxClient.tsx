@@ -16,11 +16,14 @@ export function InboxClient({
   initialRows,
   templates,
   agentes,
+  nomeDoBot,
 }: {
   agenteId: string | null;
   initialRows: InboxRow[];
   templates: Template[];
   agentes: AgenteResumo[];
+  /** Como a automação se chama nesta empresa. "bot" quando ninguém nomeou. */
+  nomeDoBot: string;
 }) {
   const [rows, setRows] = useState<InboxRow[]>(initialRows);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -269,7 +272,11 @@ export function InboxClient({
               contactId={selected.contact_id}
               contactName={selected.contact_name}
             />
-            <MessageThread messages={messages} contactName={selected.contact_name} />
+            <MessageThread
+              messages={messages}
+              contactName={selected.contact_name}
+              nomeDoBot={nomeDoBot}
+            />
             <Composer
               row={selected}
               agenteId={agenteId}

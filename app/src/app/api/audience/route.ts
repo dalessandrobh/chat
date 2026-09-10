@@ -15,7 +15,7 @@ import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { currentAgent, unauthorized } from "@/lib/auth";
 import { canManageTemplates } from "@/lib/roles";
-import { fraseConfere, FRASE_LIMPAR_BASE } from "@/lib/base-envio";
+import { chaveDeNumero, fraseConfere, FRASE_LIMPAR_BASE } from "@/lib/base-envio";
 
 const contatoSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -102,14 +102,52 @@ export async function POST(request: Request) {
 
   const lista = "contatos" in parsed.data ? parsed.data.contatos : [parsed.data];
   const grupo = parsed.data.groupId ?? null;
-
-  // `ignoreDuplicates` em vez de sobrescrever: reimportar a planilha inteira
-  // não pode ressuscitar quem pediu para sair na semana passada.
   const supabase = await supabaseServer();
+
+  /**
+   * Repetido é pela chave canônica, não pelo texto do número.
+   *
+   * O `ignoreDuplicates` do upsert compara `(company_id, wa_id)` exato, e o
+   * WhatsApp guarda o mesmo celular como 553598059605 e 5535998059605 conforme
+   * a época e o aparelho. As duas formas passavam e viravam dois contatos, que
+   * recebem a mesma campanha duas vezes.
+   *
+   * Uma consulta por lote, e não uma por linha: planilha de cinco mil viraria
+   * cinco mil idas ao banco, e o navegador desiste antes do fim.
+   */
+  const { data: existentes } = await supabase.rpc("numeros_ja_na_base", {
+    p_wa_ids: lista.map((c) => c.waId),
+  });
+
+  const jaTem = new Set(
+    ((existentes ?? []) as { chave: string }[]).map((l) => l.chave)
+  );
+
+  // Repetido dentro da própria planilha também: a mesma pessoa em duas linhas,
+  // uma com o 9 e outra sem, chegaria aqui como dois contatos novos.
+  const novos: typeof lista = [];
+  for (const c of lista) {
+    const chave = chaveDeNumero(c.waId);
+    if (jaTem.has(chave)) continue;
+    jaTem.add(chave);
+    novos.push(c);
+  }
+
+  // Nada a gravar: todos já estavam. Não é erro — é o resultado.
+  if (novos.length === 0) {
+    if (!("contatos" in parsed.data)) {
+      return NextResponse.json({ error: "Esse número já está na base." }, { status: 409 });
+    }
+    return NextResponse.json({ inseridos: 0, ignorados: lista.length });
+  }
+
+  // `ignoreDuplicates` continua: ele pega o repetido exato que escapar de uma
+  // corrida entre a consulta acima e este insert, e é o que impede reimportar
+  // a planilha inteira de ressuscitar quem pediu para sair na semana passada.
   const { data, error } = await supabase
     .from("audience")
     .upsert(
-      lista.map((c) => ({
+      novos.map((c) => ({
         name: c.name,
         wa_id: c.waId,
         tags: c.tags ?? [],

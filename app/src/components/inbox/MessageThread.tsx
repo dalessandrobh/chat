@@ -19,12 +19,14 @@ const STATUS_ICON: Record<string, string> = {
  * Numa conversa que passa de mão em mão, saber quem disse o quê é metade da
  * leitura.
  */
-function quemFalou(message: Message, contactName: string): string {
+function quemFalou(message: Message, contactName: string, nomeDoBot: string): string {
   if (message.direction === "in") return contactName;
 
   switch (message.author) {
     case "bot":
-      return "bot";
+      // O nome vem do perfil da empresa. "BOT" cravado aqui era o nome interno
+      // do sistema aparecendo onde se lê nome de quem atende.
+      return nomeDoBot;
     case "system":
       return "sistema";
     default:
@@ -34,10 +36,18 @@ function quemFalou(message: Message, contactName: string): string {
   }
 }
 
-function AuthorTag({ message, contactName }: { message: Message; contactName: string }) {
+function AuthorTag({
+  message,
+  contactName,
+  nomeDoBot,
+}: {
+  message: Message;
+  contactName: string;
+  nomeDoBot: string;
+}) {
   return (
     <span className="text-[10px] font-medium uppercase tracking-wide opacity-60">
-      {quemFalou(message, contactName)}
+      {quemFalou(message, contactName, nomeDoBot)}
       {message.type === "template" && " · template"}
     </span>
   );
@@ -137,7 +147,15 @@ function Anexo({ message }: { message: Message }) {
   );
 }
 
-function Bubble({ message, contactName }: { message: Message; contactName: string }) {
+function Bubble({
+  message,
+  contactName,
+  nomeDoBot,
+}: {
+  message: Message;
+  contactName: string;
+  nomeDoBot: string;
+}) {
   const incoming = message.direction === "in";
   const failed = message.status === "failed";
 
@@ -152,7 +170,7 @@ function Bubble({ message, contactName }: { message: Message; contactName: strin
               : "rounded-tr-sm bg-wa-bubble dark:bg-[#005c4b]"
         }`}
       >
-        <AuthorTag message={message} contactName={contactName} />
+        <AuthorTag message={message} contactName={contactName} nomeDoBot={nomeDoBot} />
 
         {message.media_mime || message.has_media ? (
           <>
@@ -195,9 +213,12 @@ function Bubble({ message, contactName }: { message: Message; contactName: strin
 export function MessageThread({
   messages,
   contactName,
+  nomeDoBot,
 }: {
   messages: Message[];
   contactName: string;
+  /** Como a automação se chama. "bot" quando a empresa não deu nome. */
+  nomeDoBot: string;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -209,7 +230,12 @@ export function MessageThread({
   return (
     <div className="thread-bg flex-1 space-y-2 overflow-y-auto p-4">
       {messages.map((message) => (
-        <Bubble key={message.id} message={message} contactName={contactName} />
+        <Bubble
+          key={message.id}
+          message={message}
+          contactName={contactName}
+          nomeDoBot={nomeDoBot}
+        />
       ))}
       <div ref={bottomRef} />
     </div>

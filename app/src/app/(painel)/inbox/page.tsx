@@ -14,7 +14,8 @@ export default async function InboxPage() {
 
   // Carga inicial no servidor para a tela já abrir preenchida; a partir daí
   // o Realtime mantém atualizado.
-  const [{ data: rows }, { data: templates }, { data: agentes }] = await Promise.all([
+  const [{ data: rows }, { data: templates }, { data: agentes }, { data: perfil }] =
+    await Promise.all([
     supabase
       .from("inbox")
       .select("*")
@@ -24,6 +25,10 @@ export default async function InboxPage() {
     // A RLS já limita à empresa; inativos ficam de fora porque direcionar
     // conversa a quem não entra no painel é perdê-la de vista.
     supabase.from("agents").select("id, full_name").eq("is_active", true),
+    // Como a automação se chama. Sem isso a conversa mostra "BOT" no meio das
+    // falas de gente — o nome interno do sistema num lugar onde se lê nome de
+    // quem atende.
+    supabase.from("company_profile").select("nome_do_bot").maybeSingle(),
   ]);
 
   return (
@@ -32,6 +37,7 @@ export default async function InboxPage() {
       initialRows={(rows ?? []) as InboxRow[]}
       templates={(templates ?? []) as Template[]}
       agentes={(agentes ?? []) as AgenteResumo[]}
+      nomeDoBot={perfil?.nome_do_bot?.trim() || "bot"}
     />
   );
 }

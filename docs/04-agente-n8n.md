@@ -576,6 +576,25 @@ O campo livre existe — **Outras preferências** —, tem teto de 2.000 caracte
 e entra no fim, marcado como preferência da empresa. É válvula de escape, não
 a porta principal.
 
+## O bot tem nome
+
+`company_profile.nome_do_bot`. Vazio continua sendo "bot", que é como sempre
+foi.
+
+Ele serve a dois lugares ao mesmo tempo, e é por isso que é um campo só:
+
+- **no painel**, é a etiqueta de cada fala da automação. Antes era "BOT"
+  cravado no código — o nome interno do sistema aparecendo num lugar onde se lê
+  nome de quem atende;
+- **no prompt**, é o primeiro bloco do perfil, antes até da apresentação da
+  empresa. Um bot chamado Eddy que não sabe que se chama Eddy responde "sou o
+  atendimento automático" a quem cumprimentou por "Eddy" — começa negando o
+  próprio nome.
+
+Ter nome não muda a regra da honestidade: perguntando se é uma pessoa ou um
+robô, a resposta continua sendo que é um atendimento automático. O bloco do
+nome diz isso explicitamente, senão as duas instruções pareceriam brigar.
+
 ## O tom vira frase, não rótulo
 
 `tom` é `informal`, `neutro` ou `formal` no banco, e `render_company_profile`

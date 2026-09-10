@@ -207,6 +207,27 @@ erra:
 - **Repetidos**: primeira ocorrência vence. Planilha de CRM repete cliente com
   dois cadastros, e a primeira linha costuma ser a mais recente.
 
+### O mesmo número, escrito de dois jeitos
+
+`audience` é única por `(company_id, wa_id)`, mas isso compara o **texto** do
+número — e o WhatsApp guarda o mesmo celular como `553598059605` e
+`5535998059605` conforme a época e o aparelho. As duas formas passavam pela
+unicidade e viravam dois contatos, que recebem a mesma campanha duas vezes.
+
+Agora `audience.chave` é coluna gerada com `chat.chave_de_numero` (país + DDD +
+oito dígitos finais, a mesma do bloqueio de número), e a importação compara por
+ela: `chat.numeros_ja_na_base` pergunta pelo lote inteiro de uma vez, e quem já
+está na base é pulado, calado. Repetido **dentro da própria planilha** também —
+a mesma pessoa em duas linhas, uma com o 9 e outra sem.
+
+Já existir não é erro: no lote, esses contatos entram na conta de "já estavam
+na base e ficaram como estavam". Só o cadastro de um contato por vez responde
+`409`, porque ali "não fiz nada" é a resposta que a pessoa precisa ler.
+
+**O índice não é único**, e é de propósito: esta base já tinha um par repetido
+de antes de tudo isso, com nomes diferentes. Escolher qual apagar é decisão de
+quem conhece os contatos. A prevenção vale para o que entra de agora em diante.
+
 ### O número
 
 A normalização decide pelo **tamanho**, não pelo prefixo. O atalho óbvio —

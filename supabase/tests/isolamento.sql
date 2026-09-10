@@ -390,6 +390,51 @@ begin
 end $$;
 reset role;
 
+\echo '=== o mesmo número com e sem o 9 é o mesmo contato ==='
+
+-- O WhatsApp guarda o mesmo celular de duas formas conforme a época e o
+-- aparelho. Entrando duas vezes, a pessoa recebe a mesma campanha duas vezes.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111aa","role":"authenticated"}';
+do $$
+declare v_ja int;
+begin
+  insert into chat.audience (company_id, name, wa_id)
+  values ('11111111-1111-1111-1111-111111111111', 'Com o nove', '5535998059605');
+
+  -- A coluna gerada normaliza as duas formas para a mesma chave.
+  if (select chave from chat.audience where wa_id = '5535998059605')
+     <> chat.chave_de_numero('553598059605') then
+    raise exception 'FALHOU: as duas formas do número deram chaves diferentes';
+  end if;
+
+  -- E é por ela que a importação enxerga o repetido, mesmo o número chegando
+  -- na outra forma, ou digitado com parênteses e traço.
+  select count(*) into v_ja
+    from chat.numeros_ja_na_base(array['553598059605', '(35) 99805-9605']);
+  if v_ja < 1 then
+    raise exception 'FALHOU: a base não reconheceu o número que já estava lá';
+  end if;
+
+  -- Número que não está na base não pode ser dado como repetido.
+  if exists (select 1 from chat.numeros_ja_na_base(array['5511900000000'])) then
+    raise exception 'FALHOU: deu como repetido um número que não existe';
+  end if;
+
+  -- E a consulta é da empresa de quem pergunta: o contato de B tem o mesmo
+  -- número do de A desde o começo deste arquivo.
+  if exists (
+    select 1 from chat.numeros_ja_na_base(array['5500000000001']) n
+     join chat.audience a on a.chave = n.chave
+    where a.company_id = '22222222-2222-2222-2222-222222222222'
+  ) then
+    raise exception 'FALHOU: a checagem de repetido enxergou a base de B';
+  end if;
+
+  raise notice 'ok: o 9 opcional não cria contato repetido, e a checagem é por empresa';
+end $$;
+reset role;
+
 \echo '=== o canal padrão das campanhas é sempre um canal ativo ==='
 
 -- Padrão pausado é a escolha arbitrária de antes com outro nome: foi assim que
