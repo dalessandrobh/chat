@@ -16,6 +16,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { supabaseServer } from "@/lib/supabase/server";
 import { currentAgent, unauthorized } from "@/lib/auth";
 import { canManageChannels } from "@/lib/roles";
 
@@ -51,13 +52,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   // O padrão vem primeiro e por função própria: ela recusa canal pausado e
   // tira o padrão do anterior na mesma transação.
+  //
+  // Com a sessão de quem clicou, e não com a chave de serviço: a função
+  // pergunta `chat.is_manager()`, que lê `auth.uid()`. Pela chave de serviço
+  // não há usuário nenhum, então ela recusava até o administrador — o papel
+  // conferido logo acima nem chegava a ser consultado pelo banco.
   if (parsed.data.isDefault) {
-    const { error: padraoError } = await supabaseAdmin().rpc("definir_canal_padrao", {
+    const supabase = await supabaseServer();
+    const { error: padraoError } = await supabase.rpc("definir_canal_padrao", {
       p_channel_id: id,
     });
     if (padraoError) {
       // PT409 é a recusa desenhada: canal pausado não pode ser padrão.
-      const status = padraoError.code === "PT409" ? 409 : 500;
+      // 42501 é a do papel — não deveria acontecer, porque a rota já barrou
+      // quem não é administrador, mas responder 500 esconderia o motivo.
+      const status =
+        padraoError.code === "PT409" ? 409 : padraoError.code === "42501" ? 403 : 500;
       return NextResponse.json({ error: padraoError.message }, { status });
     }
   }
