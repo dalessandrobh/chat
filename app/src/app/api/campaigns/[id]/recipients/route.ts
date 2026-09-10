@@ -19,6 +19,19 @@ const LIMITE = 300;
 
 const STATUS = ["pending", "sent", "delivered", "read", "failed", "skipped"];
 
+/**
+ * Os recortes que a tela clica, e o que cada um vale em `status`.
+ *
+ * Nem todo número do cartão é um status só: "enviadas" é tudo que saiu, tenha
+ * o recibo voltado ou não, e "entregues" inclui as lidas. Sem este mapa, o
+ * número clicado e a lista aberta discordariam — foi assim que "2 na fila"
+ * abriu "Ninguém neste estado".
+ */
+const RECORTE: Record<string, string[]> = {
+  enviadas: ["sent", "delivered", "read"],
+  delivered: ["delivered", "read"],
+};
+
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const agent = await currentAgent();
   if (!agent) return unauthorized();
@@ -38,9 +51,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     .eq("campaign_id", id)
     .limit(LIMITE);
 
-  // `entregues` no cartão inclui quem já leu — o log segue a mesma conta, senão
-  // o número clicado e a lista aberta discordariam.
-  if (pedido === "delivered") query = query.in("status", ["delivered", "read"]);
+  if (pedido && RECORTE[pedido]) query = query.in("status", RECORTE[pedido]);
   else if (pedido && STATUS.includes(pedido)) query = query.eq("status", pedido);
 
   const { data, error } = await query;

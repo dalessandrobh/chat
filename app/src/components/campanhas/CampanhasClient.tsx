@@ -224,7 +224,11 @@ export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
         </button>
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-3">
+      {/* "Enviadas" inclui quem ainda não teve recibo: os quatro números
+          somam o total de destinatários de todas as campanhas. Sem ele, quem
+          somasse os cartões acharia que faltou gente. */}
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Cartao rotulo="Enviadas" valor={total.entregues + total.caminho} />
         <Cartao rotulo="Entregues" valor={total.entregues} cor="text-emerald-600 dark:text-emerald-400" />
         <Cartao rotulo="Falharam" valor={total.falharam} cor="text-red-600 dark:text-red-400" />
         <Cartao rotulo="Na fila" valor={total.pendentes} />
@@ -271,8 +275,12 @@ export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
       <div className="mt-6 space-y-3">
         {campanhas.map((c) => {
           const s = STATUS[c.status] ?? STATUS.draft;
-          const resolvidas = Number(c.entregues) + Number(c.falharam);
-          const pct = c.total ? Math.round((resolvidas / Number(c.total)) * 100) : 0;
+          // `a_caminho` é quem saiu e ainda não teve recibo. Somado às
+          // entregues, é o que de fato saiu — e é isso que a barra mede.
+          const enviadas = Number(c.entregues) + Number(c.a_caminho);
+          const total = Number(c.total);
+          const pctEnviadas = total ? (enviadas / total) * 100 : 0;
+          const pctFalhas = total ? (Number(c.falharam) / total) * 100 : 0;
 
           return (
             <div key={c.campaign_id} className="rounded-lg border p-4"
@@ -328,15 +336,30 @@ export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
                 />
               )}
 
-              <div className="mt-3 h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--bg)" }}>
-                <div className="h-full bg-wa-green" style={{ width: `${pct}%` }} />
+              {/* Duas faixas, e não uma. Antes a barra somava entregues e
+                  falhas na mesma cor: uma campanha em que tudo falhou ficava
+                  100% verde, que é a leitura mais errada possível. */}
+              <div className="mt-3 flex h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--bg)" }}>
+                <div className="h-full bg-wa-green" style={{ width: `${pctEnviadas}%` }} />
+                <div className="h-full bg-red-500" style={{ width: `${pctFalhas}%` }} />
               </div>
 
-              {/* Cada número abre o log daquele grupo. "A caminho" saiu da
-                  fileira: no Baileys a confirmação do WhatsApp pode demorar ou
-                  não vir, e um número que não resolve não é informação — quem
-                  está nesse estado aparece no log, com a hora do envio. */}
+              {/* Os números somam o total, e cada um abre exatamente a lista
+                  que ele conta.
+                  
+                  "A caminho" tinha sido dobrado dentro de "na fila", e isso
+                  fazia uma campanha concluída mostrar gente esperando na fila
+                  — e o clique abria uma lista vazia, porque o log filtra por
+                  `pending` e aqueles estão em `sent`. Agora quem saiu está em
+                  "enviadas", que é o que ele é: saiu, o recibo é outra
+                  pergunta. */}
               <div className="mt-2 flex flex-wrap gap-4 text-xs" style={{ color: "var(--muted)" }}>
+                <Chip
+                  rotulo="enviadas"
+                  valor={enviadas}
+                  ativo={log?.campanha === c.campaign_id && log.status === "enviadas"}
+                  onClick={() => void verLog(c.campaign_id, "enviadas")}
+                />
                 <Chip
                   rotulo="entregues"
                   valor={Number(c.entregues)}
@@ -359,7 +382,7 @@ export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
                 />
                 <Chip
                   rotulo="na fila"
-                  valor={Number(c.pendentes) + Number(c.a_caminho)}
+                  valor={Number(c.pendentes)}
                   ativo={log?.campanha === c.campaign_id && log.status === "pending"}
                   onClick={() => void verLog(c.campaign_id, "pending")}
                 />
