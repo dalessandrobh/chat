@@ -43,12 +43,27 @@ const STATUS: Record<string, { texto: string; cor: string }> = {
   canceled:  { texto: "Cancelada", cor: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" },
 };
 
-export function CampanhasClient({ channelId }: { channelId: string | null }) {
+/** Um canal da empresa, do jeito que a escolha precisa vê-lo. */
+export interface CanalDaCampanha {
+  id: string;
+  name: string;
+  connection_state: string | null;
+  display_phone_number: string | null;
+}
+
+/** O único estado em que o WhatsApp aceita mandar mensagem. */
+const CONECTADO = "open";
+
+export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
   const [campanhas, setCampanhas] = useState<Campanha[]>([]);
   const [criando, setCriando] = useState(false);
   const [aviso, setAviso] = useState<{ kind: "ok" | "erro"; text: string } | null>(null);
   const [aberta, setAberta] = useState<string | null>(null);
   const [detalhes, setDetalhes] = useState<Record<string, Detalhe>>({});
+  /** Qual log está aberto: a campanha e o status clicado. */
+  const [log, setLog] = useState<{ campanha: string; status: string } | null>(null);
+  const [linhas, setLinhas] = useState<LinhaDoLog[] | null>(null);
+  const [cortado, setCortado] = useState<{ total: number; limite: number } | null>(null);
 
   const refresh = useCallback(async () => {
     const r = await fetch("/api/campaigns");
@@ -114,6 +129,32 @@ export function CampanhasClient({ channelId }: { channelId: string | null }) {
     return true;
   }
 
+  /**
+   * Abre o log de uma campanha filtrado pelo número que foi clicado.
+   *
+   * Não guarda em cache como a mensagem: aqui o conteúdo muda a cada envio, e
+   * um log velho na tela é pior do que nenhum — quem abriu está tentando
+   * entender o que acabou de acontecer.
+   */
+  async function verLog(campanha: string, status: string) {
+    if (log?.campanha === campanha && log.status === status) {
+      setLog(null);
+      return;
+    }
+    setLog({ campanha, status });
+    setLinhas(null);
+
+    const r = await fetch(`/api/campaigns/${campanha}/recipients?status=${status}`);
+    const j = await r.json();
+    if (!r.ok) {
+      setAviso({ kind: "erro", text: j.error });
+      setLog(null);
+      return;
+    }
+    setLinhas(j.destinatarios);
+    setCortado({ total: j.total, limite: j.limite });
+  }
+
   async function mudarStatus(id: string, status: string) {
     const r = await fetch(`/api/campaigns/${id}`, {
       method: "PATCH",
@@ -143,24 +184,31 @@ export function CampanhasClient({ channelId }: { channelId: string | null }) {
         </p>
         <button
           onClick={() => setCriando((v) => !v)}
-          disabled={!channelId}
+          disabled={channels.length === 0}
           className="ml-auto rounded-lg bg-wa-teal px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
         >
           {criando ? "Fechar" : "Nova campanha"}
         </button>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mt-4 grid grid-cols-3 gap-3">
         <Cartao rotulo="Entregues" valor={total.entregues} cor="text-emerald-600 dark:text-emerald-400" />
         <Cartao rotulo="Falharam" valor={total.falharam} cor="text-red-600 dark:text-red-400" />
-        <Cartao rotulo="A caminho" valor={total.caminho} />
         <Cartao rotulo="Na fila" valor={total.pendentes} />
       </div>
 
-      <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>
-        Não existe “inconclusivo”: o WhatsApp confirma cada entrega, então
-        “a caminho” é trânsito e sempre vira entregue ou falhou.
-      </p>
+      {/* Canal fora do ar é a explicação de campanha inteira falhando, e o
+          lugar de dizer isso é antes de criar a próxima, não depois. */}
+      {channels.some((c) => c.connection_state !== CONECTADO) && (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
+          {channels.filter((c) => c.connection_state !== CONECTADO).map((c) => c.name).join(", ")}
+          {channels.filter((c) => c.connection_state !== CONECTADO).length === 1
+            ? " não está conectado"
+            : " não estão conectados"}
+          . Campanha por um número desconectado falha em todo mundo — reconecte
+          em Canais, ou escolha outro número ao criar.
+        </p>
+      )}
 
       {aviso && (
         <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/60 dark:text-red-200">
@@ -168,9 +216,9 @@ export function CampanhasClient({ channelId }: { channelId: string | null }) {
         </p>
       )}
 
-      {criando && channelId && (
+      {criando && channels.length > 0 && (
         <Formulario
-          channelId={channelId}
+          channels={channels}
           onDone={async (r) => {
             setAviso(r.kind === "erro" ? r : null);
             if (r.kind === "ok") { setCriando(false); await refresh(); }
@@ -233,14 +281,50 @@ export function CampanhasClient({ channelId }: { channelId: string | null }) {
                 <div className="h-full bg-wa-green" style={{ width: `${pct}%` }} />
               </div>
 
+              {/* Cada número abre o log daquele grupo. "A caminho" saiu da
+                  fileira: no Baileys a confirmação do WhatsApp pode demorar ou
+                  não vir, e um número que não resolve não é informação — quem
+                  está nesse estado aparece no log, com a hora do envio. */}
               <div className="mt-2 flex flex-wrap gap-4 text-xs" style={{ color: "var(--muted)" }}>
-                <span className="text-emerald-600 dark:text-emerald-400">{c.entregues} entregues</span>
-                <span>{c.lidas} lidas</span>
-                <span className="text-red-600 dark:text-red-400">{c.falharam} falharam</span>
-                <span>{c.a_caminho} a caminho</span>
-                <span>{c.pendentes} na fila</span>
-                {Number(c.ignorados) > 0 && <span>{c.ignorados} saíram da lista antes do envio</span>}
+                <Chip
+                  rotulo="entregues"
+                  valor={Number(c.entregues)}
+                  cor="text-emerald-600 dark:text-emerald-400"
+                  ativo={log?.campanha === c.campaign_id && log.status === "delivered"}
+                  onClick={() => void verLog(c.campaign_id, "delivered")}
+                />
+                <Chip
+                  rotulo="lidas"
+                  valor={Number(c.lidas)}
+                  ativo={log?.campanha === c.campaign_id && log.status === "read"}
+                  onClick={() => void verLog(c.campaign_id, "read")}
+                />
+                <Chip
+                  rotulo="falharam"
+                  valor={Number(c.falharam)}
+                  cor="text-red-600 dark:text-red-400"
+                  ativo={log?.campanha === c.campaign_id && log.status === "failed"}
+                  onClick={() => void verLog(c.campaign_id, "failed")}
+                />
+                <Chip
+                  rotulo="na fila"
+                  valor={Number(c.pendentes) + Number(c.a_caminho)}
+                  ativo={log?.campanha === c.campaign_id && log.status === "pending"}
+                  onClick={() => void verLog(c.campaign_id, "pending")}
+                />
+                {Number(c.ignorados) > 0 && (
+                  <Chip
+                    rotulo="saíram da lista antes do envio"
+                    valor={Number(c.ignorados)}
+                    ativo={log?.campanha === c.campaign_id && log.status === "skipped"}
+                    onClick={() => void verLog(c.campaign_id, "skipped")}
+                  />
+                )}
               </div>
+
+              {log?.campanha === c.campaign_id && (
+                <Log linhas={linhas} cortado={cortado} />
+              )}
             </div>
           );
         })}
@@ -386,6 +470,121 @@ function Mensagem({
   );
 }
 
+/** Um número da campanha, que abre o log daquele grupo. */
+function Chip({
+  rotulo,
+  valor,
+  cor,
+  ativo,
+  onClick,
+}: {
+  rotulo: string;
+  valor: number;
+  cor?: string;
+  ativo: boolean;
+  onClick: () => void;
+}) {
+  // Zero não é clicável: abrir uma lista vazia é responder a pergunta com
+  // silêncio, e o número já disse o que tinha a dizer.
+  if (valor === 0) {
+    return <span className={cor}>{valor} {rotulo}</span>;
+  }
+
+  return (
+    <button
+      onClick={onClick}
+      className={`underline underline-offset-2 ${cor ?? ""} ${ativo ? "font-semibold" : ""}`}
+      title={ativo ? "Fechar a lista" : `Ver quem ${rotulo}`}
+    >
+      {valor} {rotulo}
+    </button>
+  );
+}
+
+/** Uma linha do log: um contato, o que aconteceu com ele e quando. */
+interface LinhaDoLog {
+  id: string;
+  name: string;
+  wa_id: string;
+  status: string;
+  error: string | null;
+  sent_at: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
+  failed_at: string | null;
+}
+
+const ESTADO: Record<string, string> = {
+  pending: "na fila",
+  sent: "enviada, sem confirmação",
+  delivered: "entregue",
+  read: "lida",
+  failed: "falhou",
+  skipped: "saiu da lista antes do envio",
+};
+
+/**
+ * O log de uma campanha.
+ *
+ * O erro é o que importa aqui, e por isso ele fica em destaque na linha em vez
+ * de escondido num "ver detalhes": campanha que falha inteira falha pelo mesmo
+ * motivo, e ler esse motivo uma vez responde a pergunta toda.
+ */
+function Log({
+  linhas,
+  cortado,
+}: {
+  linhas: LinhaDoLog[] | null;
+  cortado: { total: number; limite: number } | null;
+}) {
+  if (!linhas) {
+    return (
+      <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>Carregando…</p>
+    );
+  }
+
+  if (linhas.length === 0) {
+    return (
+      <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>Ninguém neste estado.</p>
+    );
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border" style={{ borderColor: "var(--border)", background: "var(--bg)" }}>
+      {linhas.map((l) => {
+        const quando = l.failed_at ?? l.read_at ?? l.delivered_at ?? l.sent_at;
+        return (
+          <div key={l.id} className="border-b px-3 py-2 text-xs last:border-b-0"
+               style={{ borderColor: "var(--border)" }}>
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="font-medium">{l.name}</span>
+              <span className="font-mono" style={{ color: "var(--muted)" }}>{l.wa_id}</span>
+              <span style={{ color: "var(--muted)" }}>{ESTADO[l.status] ?? l.status}</span>
+              {quando && (
+                <span className="ml-auto" style={{ color: "var(--muted)" }}>
+                  {new Date(quando).toLocaleString("pt-BR")}
+                </span>
+              )}
+            </div>
+            {l.error && (
+              <p className="mt-1 text-red-600 dark:text-red-400">
+                {l.error}
+                {l.status === "pending" && " — voltou para a fila; retome depois de resolver."}
+              </p>
+            )}
+          </div>
+        );
+      })}
+
+      {cortado && cortado.total > cortado.limite && (
+        <p className="px-3 py-2 text-xs" style={{ color: "var(--muted)" }}>
+          Mostrando {cortado.limite} de {cortado.total}.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Cartao({ rotulo, valor, cor }: { rotulo: string; valor: number; cor?: string }) {
   return (
     <div className="rounded-lg border p-3" style={{ background: "var(--panel)", borderColor: "var(--border)" }}>
@@ -441,12 +640,23 @@ function duracao(destinatarios: number, minSeg: number, maxSeg: number, teto: nu
 }
 
 function Formulario({
-  channelId,
+  channels,
   onDone,
 }: {
-  channelId: string;
+  channels: CanalDaCampanha[];
   onDone: (r: Aviso) => void | Promise<void>;
 }) {
+  /**
+   * Começa no primeiro canal conectado, e não no primeiro da lista.
+   *
+   * Com um número só a escolha não existia e a tela pegava o que viesse. Com
+   * dois, "o que viesse" virou uma campanha inteira saindo pelo número
+   * desconectado — cinco contatos, cinco falhas, seis minutos.
+   */
+  const [channelId, setChannelId] = useState(
+    () => (channels.find((c) => c.connection_state === CONECTADO) ?? channels[0]).id
+  );
+  const canal = channels.find((c) => c.id === channelId) ?? channels[0];
   const [nome, setNome] = useState("");
   const [tipo, setTipo] = useState<MediaKind>("text");
   const [texto, setTexto] = useState("");
@@ -589,6 +799,34 @@ function Formulario({
   return (
     <div className="mt-4 rounded-lg border p-4" style={{ background: "var(--panel)", borderColor: "var(--border)" }}>
       <div className="grid gap-4 sm:grid-cols-2">
+        {channels.length > 1 && (
+          <div className="sm:col-span-2">
+            <label className={rotulo}>Enviar pelo número</label>
+            <select
+              value={channelId}
+              onChange={(e) => setChannelId(e.target.value)}
+              className={campo}
+              style={estilo}
+            >
+              {channels.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.display_phone_number ? ` · ${c.display_phone_number}` : ""}
+                  {c.connection_state === CONECTADO ? "" : " · desconectado"}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {canal.connection_state !== CONECTADO && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 sm:col-span-2 dark:bg-amber-950/60 dark:text-amber-200">
+            <strong>{canal.name}</strong> não está conectado. Enviando por ele,
+            a campanha para no primeiro contato e se pausa sozinha — ninguém
+            recebe. Reconecte em Canais antes de disparar.
+          </p>
+        )}
+
         <div className="sm:col-span-2">
           <label className={rotulo}>Nome da campanha</label>
           <input

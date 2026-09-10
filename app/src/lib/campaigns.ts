@@ -84,14 +84,40 @@ async function enviarUm(claim: Claim): Promise<boolean> {
     return true;
   }
 
+  // Sessão caída não é falha deste contato — é o número da empresa que está
+  // fora do ar. Marcar `failed` seria condenar quem nunca recebeu nada: a fila
+  // só pega `pending`, então religar o WhatsApp depois não traria ninguém de
+  // volta. Ele volta para a fila, e a campanha para.
+  //
+  // Parar é o ponto: sem isso o próximo envio falha igual, e o seguinte, até a
+  // lista inteira estar "falhada" por um motivo que ninguém no meio dela tem.
+  // O erro fica gravado mesmo com o destinatário pendente — é o que a tela
+  // mostra para explicar por que a campanha pausou sozinha.
+  if (resultado.reason === "disconnected") {
+    await db
+      .from("campaign_recipients")
+      .update({ status: "pending", failed_at: null, error: resultado.message })
+      .eq("id", claim.recipient_id);
+
+    await db
+      .from("campaigns")
+      .update({ status: "paused" })
+      .eq("id", claim.campaign_id)
+      .eq("status", "running");
+
+    console.error(
+      `[campanha] canal ${claim.channel_id} desconectado; campanha ${claim.campaign_id} pausada`
+    );
+    return false;
+  }
+
   await db
     .from("campaign_recipients")
     .update({ status: "failed", failed_at: new Date().toISOString(), error: resultado.message })
     .eq("id", claim.recipient_id);
 
-  // Falha de sessão é do canal, não do número: insistir com este contato não
-  // resolve nada e tirá-lo da base seria injusto com ele.
-  if (resultado.reason !== "disconnected") {
+  // Falha do número, não do canal: aí o contato sai da base com o motivo certo.
+  {
     await db.rpc("opt_out", {
       p_company_id: claim.company_id,
       p_wa_id: claim.wa_id,

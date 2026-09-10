@@ -81,6 +81,48 @@ registro de que a pessoa pediu.
 Nada é apagado por nenhum desses caminhos. A linha marcada é justamente o que
 impede a planilha de amanhã de ressuscitar quem saiu hoje.
 
+## Por qual número sai
+
+A campanha é de um canal (`campaigns.channel_id`), e desde que a empresa tem
+mais de um número ativo a escolha é explícita na tela. Antes não era: a página
+pegava `.limit(1)` **sem `order by`**, o Postgres devolvia qualquer canal ativo,
+e em 10/09/2026 uma campanha inteira saiu pelo número desconectado — cinco
+contatos, cinco falhas, seis minutos.
+
+O seletor começa no primeiro canal **conectado**, mostra o estado de cada um, e
+avisa em amarelo quando o escolhido não está no ar.
+
+### Canal caído pausa a campanha, não queima a lista
+
+Falha de sessão não é falha do contato. Quando o envio volta com
+`disconnected`:
+
+- o destinatário volta para **`pending`**, não vai para `failed` — ele nunca
+  recebeu nada, e a fila só pega `pending`: marcá-lo como falho seria condená-lo
+  a nunca receber, mesmo depois de o WhatsApp voltar;
+- a campanha vai para **`paused`**, porque o próximo envio falharia igual, e o
+  seguinte, até a lista inteira estar "falhada" por um motivo que nenhum deles
+  tem;
+- o erro fica gravado na linha mesmo com o destinatário pendente. É o que a
+  tela mostra para explicar por que a campanha parou sozinha.
+
+Reconectar o número em Canais e clicar em **Retomar** continua de onde parou.
+
+## O log: quem, e por quê
+
+Os números embaixo de cada campanha são clicáveis. Cada um abre a lista de quem
+está naquele estado, com a hora e — no caso das falhas — a mensagem de erro
+inteira.
+
+É a diferença entre "5 falharam" e "os cinco falharam porque o WhatsApp daquele
+número estava desconectado". Só a segunda frase dá para agir.
+
+**"A caminho" saiu da tela.** No Baileys a confirmação de entrega pode demorar
+ou não vir, e um número que fica parado não é informação — quem está nesse
+estado aparece no log, com a hora do envio e a legenda "enviada, sem
+confirmação". O cartão do topo conta esses junto de "na fila", que é o que eles
+são na prática: ainda não resolvidos.
+
 ## Corrigir o texto com a campanha correndo
 
 Campanha grande sai por horas, e a hora em que alguém percebe o erro de texto é
@@ -137,15 +179,16 @@ Nada é gravado antes de a tela mostrar o que entendeu. O caminho ruim aqui não
 é a linha recusada — é importar mil contatos com a coluna errada e ter que
 desfazer no banco.
 
-## Status do envio — e por que não há "inconclusivo"
+## Status do envio
 
 `pending → sent → delivered → read`, ou `failed`, ou `skipped`.
 
-O WhatsApp devolve recibo para toda mensagem: ou ela chega, ou dá erro. Não
-existe estado permanente de dúvida, então o painel não inventa um. `sent` é
-trânsito — a mensagem saiu e o recibo ainda não voltou; sempre vira
-`delivered`/`read` ou `failed`. É por isso que a tela chama a coluna de
-"a caminho" e não de "inconclusivo".
+`sent` é trânsito: a mensagem saiu e o recibo ainda não voltou. Na Meta Cloud
+ele sempre vira `delivered`/`read` ou `failed` — o recibo é garantido. No
+Baileys, que é o que esta instalação usa, não: o recibo pode demorar, e pode
+não vir. Foi por isso que "a caminho" saiu da tela como número próprio — quem
+fica nesse estado aparece no log, com a hora do envio, em vez de virar um
+contador que não anda.
 
 `skipped` é quem saiu da lista depois de entrar na fila: pediu para parar às
 10h e o disparo era às 11h.
