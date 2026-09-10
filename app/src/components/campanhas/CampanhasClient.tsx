@@ -49,6 +49,8 @@ export interface CanalDaCampanha {
   name: string;
   connection_state: string | null;
   display_phone_number: string | null;
+  /** O padrão da empresa, marcado em Canais. Um só, e sempre ativo. */
+  is_default: boolean;
 }
 
 /** O único estado em que o WhatsApp aceita mandar mensagem. */
@@ -57,6 +59,15 @@ const CONECTADO = "open";
 export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
   const [campanhas, setCampanhas] = useState<Campanha[]>([]);
   const [criando, setCriando] = useState(false);
+  /**
+   * Campanha de onde a próxima copia conteúdo, ritmo e recorte.
+   *
+   * A antiga não é tocada: ela é o registro do que foi enviado, e editá-la
+   * apagaria a memória que se queria ter. Reusar é fazer outra campanha com a
+   * mesma pergunta — e a fila dela é montada contra a base de hoje, então quem
+   * entrou depois entra e quem pediu para sair fica de fora.
+   */
+  const [modelo, setModelo] = useState<Modelo | undefined>(undefined);
   const [aviso, setAviso] = useState<{ kind: "ok" | "erro"; text: string } | null>(null);
   const [aberta, setAberta] = useState<string | null>(null);
   const [detalhes, setDetalhes] = useState<Record<string, Detalhe>>({});
@@ -155,6 +166,23 @@ export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
     setCortado({ total: j.total, limite: j.limite });
   }
 
+  /** Abre o formulário já preenchido a partir de uma campanha existente. */
+  async function usarComoModelo(id: string) {
+    const r = await fetch(`/api/campaigns/${id}`);
+    const j = await r.json();
+    if (!r.ok) {
+      setAviso({ kind: "erro", text: j.error });
+      return;
+    }
+
+    // Canal pausado ou apagado desde então: a cópia cai no padrão da empresa,
+    // e o seletor mostra qual é. Insistir no canal antigo seria criar uma
+    // campanha que não anda.
+    setModelo(j.campanha as Modelo);
+    setCriando(true);
+    setAviso(null);
+  }
+
   async function mudarStatus(id: string, status: string) {
     const r = await fetch(`/api/campaigns/${id}`, {
       method: "PATCH",
@@ -183,7 +211,12 @@ export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
           Mensagens agendadas para a base.
         </p>
         <button
-          onClick={() => setCriando((v) => !v)}
+          onClick={() => {
+            // "Nova campanha" é sempre em branco: reusar tem botão próprio, e
+            // abrir o formulário com o modelo de antes seria uma surpresa.
+            setModelo(undefined);
+            setCriando((v) => !v);
+          }}
           disabled={channels.length === 0}
           className="ml-auto rounded-lg bg-wa-teal px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
         >
@@ -218,10 +251,19 @@ export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
 
       {criando && channels.length > 0 && (
         <Formulario
+          // A chave troca quando o modelo troca: sem ela o React reaproveita o
+          // formulário aberto e os campos ficariam com o conteúdo do modelo
+          // anterior, ou em branco.
+          key={modelo ? `modelo:${modelo.name}:${modelo.channel_id}` : "novo"}
           channels={channels}
+          modelo={modelo}
           onDone={async (r) => {
             setAviso(r.kind === "erro" ? r : null);
-            if (r.kind === "ok") { setCriando(false); await refresh(); }
+            if (r.kind === "ok") {
+              setCriando(false);
+              setModelo(undefined);
+              await refresh();
+            }
           }}
         />
       )}
@@ -247,6 +289,15 @@ export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
                   <button onClick={() => void verMensagem(c.campaign_id)}
                           className="rounded-lg border px-2 py-1 text-xs" style={{ borderColor: "var(--border)" }}>
                     {aberta === c.campaign_id ? "Ocultar mensagem" : "Ver mensagem"}
+                  </button>
+                  {/* Vale para qualquer campanha, inclusive as encerradas —
+                      são justamente elas que já provaram o que funciona. */}
+                  <button onClick={() => void usarComoModelo(c.campaign_id)}
+                          disabled={channels.length === 0}
+                          title="Cria uma campanha nova com este texto, ritmo e recorte"
+                          className="rounded-lg border px-2 py-1 text-xs disabled:opacity-50"
+                          style={{ borderColor: "var(--border)" }}>
+                    Usar como modelo
                   </button>
                   {c.status === "running" && (
                     <button onClick={() => mudarStatus(c.campaign_id, "paused")}
@@ -639,45 +690,96 @@ function duracao(destinatarios: number, minSeg: number, maxSeg: number, teto: nu
     : `cerca de ${hoje} de envio`;
 }
 
+/**
+ * O que uma campanha antiga empresta para a próxima.
+ *
+ * É o `Detalhe` do GET, e a lista aqui é só a parte que faz sentido copiar:
+ * conteúdo, ritmo e recorte. Datas, contadores e status ficam para trás — são
+ * a memória daquela campanha, não do modelo.
+ */
+export interface Modelo {
+  name: string;
+  channel_id: string;
+  media_kind: MediaKind;
+  body: string | null;
+  media_url: string | null;
+  media_filename: string | null;
+  media_mime: string | null;
+  tags: string[] | null;
+  group_ids: string[] | null;
+  sem_grupo: boolean | null;
+  interval_min_seconds: number;
+  interval_max_seconds: number;
+  daily_limit: number;
+  window_start: string;
+  window_end: string;
+}
+
 function Formulario({
   channels,
+  modelo,
   onDone,
 }: {
   channels: CanalDaCampanha[];
+  /** Campanha de onde copiar. Ausente é campanha em branco. */
+  modelo?: Modelo;
   onDone: (r: Aviso) => void | Promise<void>;
 }) {
   /**
-   * Começa no primeiro canal conectado, e não no primeiro da lista.
+   * Começa no canal padrão da empresa.
    *
-   * Com um número só a escolha não existia e a tela pegava o que viesse. Com
-   * dois, "o que viesse" virou uma campanha inteira saindo pelo número
-   * desconectado — cinco contatos, cinco falhas, seis minutos.
+   * Sem padrão marcado, cai no primeiro conectado; sem nenhum conectado, no
+   * primeiro da lista. O que não existe mais é "o que viesse do banco": foi
+   * assim que uma campanha inteira saiu pelo número desconectado.
    */
   const [channelId, setChannelId] = useState(
-    () => (channels.find((c) => c.connection_state === CONECTADO) ?? channels[0]).id
+    () =>
+      (
+        (modelo?.channel_id
+          ? channels.find((c) => c.id === modelo.channel_id)
+          : undefined) ??
+        channels.find((c) => c.is_default) ??
+        channels.find((c) => c.connection_state === CONECTADO) ??
+        channels[0]
+      ).id
   );
   const canal = channels.find((c) => c.id === channelId) ?? channels[0];
+  // Nome novo, e não "Promoção (cópia)": a campanha antiga continua na lista
+  // com o nome dela, e dois nomes quase iguais tornam o histórico ilegível.
   const [nome, setNome] = useState("");
-  const [tipo, setTipo] = useState<MediaKind>("text");
-  const [texto, setTexto] = useState("");
-  const [anexo, setAnexo] = useState<Anexo | null>(null);
+  const [tipo, setTipo] = useState<MediaKind>(modelo?.media_kind ?? "text");
+  const [texto, setTexto] = useState(modelo?.body ?? "");
+  const [anexo, setAnexo] = useState<Anexo | null>(
+    modelo?.media_url
+      ? {
+          url: modelo.media_url,
+          filename: modelo.media_filename ?? "",
+          mime: modelo.media_mime ?? "",
+          // O arquivo é o mesmo lá no armazenamento; o tamanho só serve para
+          // a linha de "N KB" logo abaixo do anexo, e reusar não o consulta.
+          bytes: 0,
+        }
+      : null
+  );
   const [subindo, setSubindo] = useState(false);
+  // Data não se copia: reusar é enviar de novo, e a data do envio passado
+  // agendaria a cópia para o passado.
   const [quando, setQuando] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>(modelo?.tags ?? []);
   const [tagsBase, setTagsBase] = useState<string[]>([]);
   /** Grupos escolhidos. Vazio quer dizer "todos os grupos". */
-  const [gruposEscolhidos, setGruposEscolhidos] = useState<string[]>([]);
+  const [gruposEscolhidos, setGruposEscolhidos] = useState<string[]>(modelo?.group_ids ?? []);
   /** "Sem grupo" é um recorte de verdade: quem entrou na última planilha. */
-  const [semGrupo, setSemGrupo] = useState(false);
+  const [semGrupo, setSemGrupo] = useState(modelo?.sem_grupo ?? false);
   const [grupos, setGrupos] = useState<{ id: string; nome: string }[]>([]);
   const [alcance, setAlcance] = useState<
     { nome: string; tags: string[]; grupo: string | null }[]
   >([]);
-  const [minSeg, setMinSeg] = useState(45);
-  const [maxSeg, setMaxSeg] = useState(120);
-  const [teto, setTeto] = useState(150);
-  const [inicio, setInicio] = useState("09:00");
-  const [fim, setFim] = useState("19:00");
+  const [minSeg, setMinSeg] = useState(modelo?.interval_min_seconds ?? 45);
+  const [maxSeg, setMaxSeg] = useState(modelo?.interval_max_seconds ?? 120);
+  const [teto, setTeto] = useState(modelo?.daily_limit ?? 150);
+  const [inicio, setInicio] = useState(modelo?.window_start?.slice(0, 5) ?? "09:00");
+  const [fim, setFim] = useState(modelo?.window_end?.slice(0, 5) ?? "19:00");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 

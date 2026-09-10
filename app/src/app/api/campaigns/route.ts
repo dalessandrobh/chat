@@ -63,6 +63,25 @@ export async function POST(request: Request) {
 
   const supabase = await supabaseServer();
 
+  // Canal pausado não manda campanha. A checagem é aqui, e não só no disparo:
+  // descobrir lá é descobrir com a campanha já criada e ninguém entendendo por
+  // que ela não anda.
+  const { data: canal } = await supabase
+    .from("channels")
+    .select("id, name, is_active")
+    .eq("id", d.channelId)
+    .maybeSingle();
+
+  if (!canal) {
+    return NextResponse.json({ error: "Canal não encontrado." }, { status: 404 });
+  }
+  if (!canal.is_active) {
+    return NextResponse.json(
+      { error: `O canal ${canal.name} está pausado. Retome-o em Canais ou escolha outro.` },
+      { status: 409 }
+    );
+  }
+
   // Nasce agendada quando tem data, e rascunho quando não tem. Rascunho não
   // dispara: é onde se confere o texto antes de ele virar irreversível.
   const { data: campanha, error } = await supabase
@@ -83,6 +102,12 @@ export async function POST(request: Request) {
       daily_limit: d.dailyLimit ?? 150,
       window_start: d.windowStart ?? "09:00",
       window_end: d.windowEnd ?? "19:00",
+      // O recorte fica gravado na campanha, e não só na fila que ele gerou.
+      // É o que permite reusá-la como modelo depois: a cópia refaz a pergunta
+      // contra a base de hoje, em vez de reenviar para uma lista congelada.
+      tags: d.tags ?? [],
+      group_ids: d.groupIds ?? [],
+      sem_grupo: d.semGrupo ?? false,
       created_by: agent.id,
     })
     .select("id, name")
@@ -90,14 +115,11 @@ export async function POST(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  // Grupo e etiqueta se somam com E: "Revendedores" mais "sul" atinge quem
-  // está nos dois. Quem quer a união monta duas campanhas — que é o que ela é
-  // de verdade, com texto próprio para cada lado.
+  // A fila sai do recorte que acabou de ser gravado — o banco lê da campanha,
+  // não de parâmetros. Duas cópias do mesmo filtro seriam duas chances de
+  // divergirem, e a que manda seria a invisível.
   const { data: total, error: filaError } = await supabase.rpc("enqueue_campaign", {
     p_campaign_id: campanha.id,
-    p_tags: d.tags?.length ? d.tags : null,
-    p_group_ids: d.groupIds?.length ? d.groupIds : null,
-    p_sem_grupo: d.semGrupo ?? false,
   });
 
   if (filaError) {

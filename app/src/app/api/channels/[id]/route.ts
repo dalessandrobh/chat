@@ -1,10 +1,16 @@
 /**
- * PATCH /api/channels/:id — renomeia ou pausa o canal
+ * PATCH /api/channels/:id — renomeia, pausa, ou marca como padrão
  *
  * Pausar cala o que sai sozinho: o bot não responde e as campanhas não
  * disparam por este número. A conversa continua chegando e aparecendo no
  * painel, e quem estiver lá responde na mão — pausar é tirar o robô do ar,
  * não o cliente.
+ *
+ * O padrão é o canal que as campanhas usam quando ninguém escolhe. Um por
+ * empresa, e sempre ativo: um padrão pausado devolveria a escolha ao acaso, que
+ * foi como uma campanha inteira saiu pelo número desconectado. Quem troca é
+ * `chat.definir_canal_padrao`, porque tirar de um e pôr no outro são duas
+ * escritas que precisam andar juntas.
  */
 
 import { NextResponse } from "next/server";
@@ -17,10 +23,14 @@ const patchSchema = z
   .object({
     name: z.string().trim().min(2).max(60).optional(),
     isActive: z.boolean().optional(),
+    /** Só `true`: o padrão se troca marcando outro, nunca desmarcando este —
+     *  ficar sem padrão nenhum devolveria a escolha ao acaso. */
+    isDefault: z.literal(true).optional(),
   })
-  .refine((v) => v.name !== undefined || v.isActive !== undefined, {
-    message: "Nada para alterar",
-  });
+  .refine(
+    (v) => v.name !== undefined || v.isActive !== undefined || v.isDefault !== undefined,
+    { message: "Nada para alterar" }
+  );
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const agent = await currentAgent();
@@ -39,15 +49,38 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     );
   }
 
+  // O padrão vem primeiro e por função própria: ela recusa canal pausado e
+  // tira o padrão do anterior na mesma transação.
+  if (parsed.data.isDefault) {
+    const { error: padraoError } = await supabaseAdmin().rpc("definir_canal_padrao", {
+      p_channel_id: id,
+    });
+    if (padraoError) {
+      // PT409 é a recusa desenhada: canal pausado não pode ser padrão.
+      const status = padraoError.code === "PT409" ? 409 : 500;
+      return NextResponse.json({ error: padraoError.message }, { status });
+    }
+  }
+
   const patch: Record<string, unknown> = {};
   if (parsed.data.name !== undefined) patch.name = parsed.data.name;
   if (parsed.data.isActive !== undefined) patch.is_active = parsed.data.isActive;
+
+  const devolver =
+    "id, name, provider, instance_name, display_phone_number, " +
+    "connection_state, connected_at, is_active, is_default";
+
+  if (Object.keys(patch).length === 0) {
+    const { data } = await supabaseAdmin()
+      .from("channels").select(devolver).eq("id", id).maybeSingle();
+    return NextResponse.json({ channel: data });
+  }
 
   const { data, error } = await supabaseAdmin()
     .from("channels")
     .update(patch)
     .eq("id", id)
-    .select("id, name, provider, instance_name, display_phone_number, connection_state, connected_at, is_active")
+    .select(devolver)
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

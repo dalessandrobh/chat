@@ -19,10 +19,14 @@ export default async function CampanhasPage() {
     // desconectado, falhando contato por contato até o fim da lista.
     //
     // `connection_state` vem junto porque escolher o canal sem saber se ele
-    // está no ar é escolher no escuro.
+    // está no ar é escolher no escuro. `is_default` é por onde a escolha
+    // começa: quem não quer escolher toda vez marca o padrão em Canais.
+    //
+    // Só ativos: canal pausado não dispara campanha, e oferecê-lo na lista
+    // seria oferecer uma campanha que não anda.
     supabase
       .from("channels")
-      .select("id, name, connection_state, display_phone_number")
+      .select("id, name, connection_state, display_phone_number, is_default")
       .eq("is_active", true)
       .order("created_at"),
   ]);

@@ -390,6 +390,54 @@ begin
 end $$;
 reset role;
 
+\echo '=== o canal padrão das campanhas é sempre um canal ativo ==='
+
+-- Padrão pausado é a escolha arbitrária de antes com outro nome: foi assim que
+-- uma campanha inteira saiu pelo número desconectado.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111aa","role":"authenticated"}';
+do $$
+declare
+  v_canal    uuid := '11111111-0000-0000-0000-0000000000c1';
+  v_campanha uuid;
+begin
+  perform chat.definir_canal_padrao(v_canal);
+  if not (select is_default from chat.channels where id = v_canal) then
+    raise exception 'FALHOU: o canal não virou padrão';
+  end if;
+
+  -- Pausar o padrão tira o padrão, calado: recusar aqui faria o botão
+  -- "Pausar" da tela falhar por um motivo que não é dele.
+  update chat.channels set is_active = false where id = v_canal;
+  if (select is_default from chat.channels where id = v_canal) then
+    raise exception 'FALHOU: canal pausado continuou sendo o padrão';
+  end if;
+
+  begin
+    perform chat.definir_canal_padrao(v_canal);
+    raise exception 'FALHOU: aceitou um canal pausado como padrão';
+  exception
+    when sqlstate 'PT409' then null;
+  end;
+
+  -- E campanha por canal pausado nem monta fila: descobrir isso só no disparo
+  -- é descobrir com a campanha criada e ninguém entendendo por que ela não anda.
+  insert into chat.campaigns (company_id, channel_id, name, body)
+  values ('11111111-1111-1111-1111-111111111111', v_canal, 'Canal pausado', 'oi')
+  returning id into v_campanha;
+
+  begin
+    perform chat.enqueue_campaign(v_campanha);
+    raise exception 'FALHOU: montou fila para campanha de canal pausado';
+  exception
+    when sqlstate 'PT409' then null;
+  end;
+
+  update chat.channels set is_active = true where id = v_canal;
+  raise notice 'ok: o padrão é sempre ativo, e canal pausado não monta fila';
+end $$;
+reset role;
+
 \echo '=== grupo e etiqueta recortam a base, e param na empresa ==='
 
 -- Segmentar errado não dá erro: dá uma campanha para a lista errada, que é o
@@ -422,17 +470,19 @@ begin
     (v_a, 'Solto sem nada',    '5531900000004', '{}',               null);
 
   -- Grupo e etiqueta se somam com E: só o primeiro dos quatro.
-  insert into chat.campaigns (company_id, channel_id, name, body)
-  values (v_a, v_canal, 'Recorte 1', 'oi') returning id into v_campanha;
-  v_qtd := chat.enqueue_campaign(v_campanha, '{recorte-teste}', array[v_grupo]);
+  insert into chat.campaigns (company_id, channel_id, name, body, tags, group_ids)
+  values (v_a, v_canal, 'Recorte 1', 'oi', '{recorte-teste}', array[v_grupo])
+  returning id into v_campanha;
+  v_qtd := chat.enqueue_campaign(v_campanha);
   if v_qtd <> 1 then
     raise exception 'FALHOU: grupo mais etiqueta deveria pegar 1, pegou %', v_qtd;
   end if;
 
   -- Só o grupo: os dois do grupo.
-  insert into chat.campaigns (company_id, channel_id, name, body)
-  values (v_a, v_canal, 'Recorte 2', 'oi') returning id into v_campanha;
-  v_qtd := chat.enqueue_campaign(v_campanha, null, array[v_grupo]);
+  insert into chat.campaigns (company_id, channel_id, name, body, group_ids)
+  values (v_a, v_canal, 'Recorte 2', 'oi', array[v_grupo])
+  returning id into v_campanha;
+  v_qtd := chat.enqueue_campaign(v_campanha);
   if v_qtd <> 2 then
     raise exception 'FALHOU: só o grupo deveria pegar 2, pegou %', v_qtd;
   end if;
@@ -442,9 +492,10 @@ begin
     from chat.audience
    where company_id = v_a and is_sendable and group_id is null;
 
-  insert into chat.campaigns (company_id, channel_id, name, body)
-  values (v_a, v_canal, 'Recorte 3', 'oi') returning id into v_campanha;
-  v_qtd := chat.enqueue_campaign(v_campanha, null, null, true);
+  insert into chat.campaigns (company_id, channel_id, name, body, sem_grupo)
+  values (v_a, v_canal, 'Recorte 3', 'oi', true)
+  returning id into v_campanha;
+  v_qtd := chat.enqueue_campaign(v_campanha);
   if v_qtd <> v_esperado then
     raise exception 'FALHOU: sem grupo deveria pegar %, pegou %', v_esperado, v_qtd;
   end if;
@@ -464,9 +515,10 @@ begin
   update chat.audience
      set is_sendable = false, unsendable_reason = 'manual', unsendable_at = now()
    where wa_id = '5531900000001';
-  insert into chat.campaigns (company_id, channel_id, name, body)
-  values (v_a, v_canal, 'Recorte 5', 'oi') returning id into v_campanha;
-  v_qtd := chat.enqueue_campaign(v_campanha, null, array[v_grupo]);
+  insert into chat.campaigns (company_id, channel_id, name, body, group_ids)
+  values (v_a, v_canal, 'Recorte 5', 'oi', array[v_grupo])
+  returning id into v_campanha;
+  v_qtd := chat.enqueue_campaign(v_campanha);
   if v_qtd <> 1 then
     raise exception 'FALHOU: "não enviar" não tirou o contato do recorte, pegou %', v_qtd;
   end if;
@@ -474,6 +526,18 @@ begin
   -- O grupo é da empresa: nem aparece para B, nem aceita contato de B.
   if exists (select 1 from chat.contact_groups where company_id <> v_a) then
     raise exception 'FALHOU: A enxergou grupo de outra empresa';
+  end if;
+
+  -- Usar como modelo é montar outra campanha com o mesmo recorte gravado, e
+  -- refazer a conta contra a base de hoje. Quem saiu da lista no meio não volta.
+  insert into chat.campaigns (company_id, channel_id, name, body, group_ids)
+  select v_a, v_canal, 'Cópia do recorte 5', body, group_ids
+    from chat.campaigns where name = 'Recorte 5'
+  returning id into v_campanha;
+
+  v_qtd := chat.enqueue_campaign(v_campanha);
+  if v_qtd <> 1 then
+    raise exception 'FALHOU: a cópia deveria repetir o recorte e pegar 1, pegou %', v_qtd;
   end if;
 
   -- Pela tela, quem barra é a RLS, e ela barra calada: o update não encontra

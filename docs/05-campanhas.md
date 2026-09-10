@@ -83,14 +83,38 @@ impede a planilha de amanhã de ressuscitar quem saiu hoje.
 
 ## Por qual número sai
 
-A campanha é de um canal (`campaigns.channel_id`), e desde que a empresa tem
-mais de um número ativo a escolha é explícita na tela. Antes não era: a página
-pegava `.limit(1)` **sem `order by`**, o Postgres devolvia qualquer canal ativo,
-e em 10/09/2026 uma campanha inteira saiu pelo número desconectado — cinco
-contatos, cinco falhas, seis minutos.
+A campanha é de um canal (`campaigns.channel_id`), e a escolha é explícita na
+tela. Antes não era: a página pegava `.limit(1)` **sem `order by`**, o Postgres
+devolvia qualquer canal ativo, e em 10/09/2026 uma campanha inteira saiu pelo
+número desconectado — cinco contatos, cinco falhas, seis minutos.
 
-O seletor começa no primeiro canal **conectado**, mostra o estado de cada um, e
-avisa em amarelo quando o escolhido não está no ar.
+**Só canais ativos aparecem**, e a rota recusa com `409` se o canal tiver sido
+pausado entre abrir a tela e criar a campanha. `enqueue_campaign` recusa pelo
+mesmo motivo: descobrir isso só no disparo é descobrir com a campanha criada e
+ninguém entendendo por que ela não anda.
+
+### O padrão
+
+`channels.is_default` marca o canal que as campanhas usam quando ninguém
+escolhe — **um por empresa, e sempre ativo**. Um padrão pausado seria a escolha
+arbitrária de antes com outro nome.
+
+Duas regras que o banco garante, e não a tela:
+
+- **marcar** um canal pausado como padrão é erro (`PT409`);
+- **pausar** o canal padrão tira o padrão dele, calado. Recusar aqui faria o
+  botão "Pausar" da tela de Canais falhar por um motivo que não é dele.
+
+Quem troca é `chat.definir_canal_padrao`, e não um `update` da tela: tirar de um
+e pôr no outro são duas escritas que precisam andar juntas — falhando no meio, a
+empresa ficaria com dois padrões, ou com nenhum, que é pior.
+
+Não existe "desmarcar": o padrão se troca marcando outro. Sem padrão, a
+campanha voltaria a escolher sozinha.
+
+O seletor da campanha começa no padrão; sem padrão, no primeiro conectado; sem
+nenhum conectado, no primeiro da lista. E avisa em amarelo quando o escolhido
+não está no ar.
 
 ### Canal caído pausa a campanha, não queima a lista
 
@@ -107,6 +131,30 @@ Falha de sessão não é falha do contato. Quando o envio volta com
   tela mostra para explicar por que a campanha parou sozinha.
 
 Reconectar o número em Canais e clicar em **Retomar** continua de onde parou.
+
+## Repetir uma campanha
+
+Campanha enviada fica, e é a memória do que saiu: texto, ritmo, recorte e a
+lista de quem recebeu. **Ela não é editada** — mexer no registro apagaria
+justamente a memória que se queria ter.
+
+Repetir é **Usar como modelo**: abre o formulário de campanha nova já
+preenchido com o conteúdo, o ritmo e o recorte da antiga. O que não vem junto é
+a data (agendar a cópia para o passado não faria sentido) e o nome, que fica em
+branco de propósito — duas campanhas chamadas quase igual tornam o histórico
+ilegível.
+
+Isso só existe porque **o recorte passou a morar na campanha**: `tags`,
+`group_ids` e `sem_grupo` são colunas de `chat.campaigns`, e `enqueue_campaign`
+lê delas em vez de receber parâmetros. Uma fonte só, impossível de divergir.
+
+E é o que faz a repetição valer a pena: a fila da cópia é montada contra a base
+de **hoje**. Quem entrou depois entra; quem pediu para sair fica de fora.
+Repetir não é reenviar para uma lista congelada — é fazer a mesma pergunta de
+novo.
+
+Vale para qualquer campanha, inclusive as encerradas: são justamente elas que
+já provaram o que funciona.
 
 ## O log: quem, e por quê
 
@@ -265,8 +313,5 @@ mesmo vídeo uma vez por pessoa. Teto de 16 MB, que é o que o WhatsApp aceita.
   avisa quando uma campanha fica dias parada.
 - **Nada impede** criar dez campanhas para a mesma base no mesmo dia. O
   intervalo por canal segura a cadência, mas o teto diário é por campanha.
-- **A campanha não guarda o recorte que a montou.** Grupo e etiqueta escolhidos
-  viram destinatários e somem; a lista de quem recebeu é o único registro. Quem
-  quiser repetir a campanha da semana passada refaz a escolha na mão.
 - **Trocar o grupo de muitos contatos de uma vez** só pela importação, que
   aplica o grupo ao lote inteiro. Contato a contato, é na linha da tela.

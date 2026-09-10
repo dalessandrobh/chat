@@ -92,7 +92,7 @@ export async function POST(request: Request) {
       company_id: agent.company_id,
       base_url: baseUrl,
     })
-    .select("id, name, provider, instance_name, display_phone_number, connection_state, connected_at, is_active")
+    .select("id, name, provider, instance_name, display_phone_number, connection_state, connected_at, is_active, is_default")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

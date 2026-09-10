@@ -13,6 +13,8 @@ export interface Channel {
   connection_state: string;
   connected_at: string | null;
   is_active: boolean;
+  /** O canal que as campanhas usam quando ninguém escolhe. Um por empresa. */
+  is_default: boolean;
 }
 
 const STATE_LABEL: Record<string, { text: string; className: string }> = {
@@ -44,8 +46,24 @@ export function CanaisClient({
   const [channels, setChannels] = useState(initial);
   const [criando, setCriando] = useState(false);
 
+  /**
+   * Troca a linha mexida — e, quando a mudança foi o padrão, corrige as
+   * outras.
+   *
+   * Padrão é exclusivo: marcar um desmarca o anterior, no banco. Sem esta
+   * segunda parte a tela mostraria dois "Padrão das campanhas" até alguém
+   * recarregar, que é o tipo de mentira que faz a pessoa clicar de novo.
+   */
   function substituir(channel: Channel) {
-    setChannels((prev) => prev.map((c) => (c.id === channel.id ? channel : c)));
+    setChannels((prev) =>
+      prev.map((c) =>
+        c.id === channel.id
+          ? channel
+          : channel.is_default
+            ? { ...c, is_default: false }
+            : c
+      )
+    );
   }
 
   return (
@@ -464,6 +482,11 @@ function ChannelCard({
             Pausado
           </span>
         )}
+        {channel.is_default && (
+          <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800 dark:bg-sky-950 dark:text-sky-300">
+            Padrão das campanhas
+          </span>
+        )}
         <span className="text-xs" style={{ color: "var(--muted)" }}>
           {isEvolution ? `Evolution · ${channel.instance_name}` : "Meta Cloud API"}
           {channel.display_phone_number && ` · ${channel.display_phone_number}`}
@@ -471,6 +494,21 @@ function ChannelCard({
 
         {canManage && (
           <div className="ml-auto flex flex-wrap gap-2">
+            {/* Só aparece onde faz sentido: o padrão precisa estar ativo, e
+                desmarcar não existe — troca-se marcando outro, senão a empresa
+                ficaria sem padrão e a campanha voltaria a escolher sozinha. */}
+            {channel.is_active && !channel.is_default && (
+              <button
+                onClick={() => void patch({ isDefault: true })}
+                disabled={busy}
+                title="As campanhas passam a sair por este número quando ninguém escolher"
+                className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50"
+                style={{ borderColor: "var(--border)" }}
+              >
+                Tornar padrão
+              </button>
+            )}
+
             <button
               onClick={() => void patch({ isActive: !channel.is_active })}
               disabled={busy}
@@ -516,7 +554,7 @@ function ChannelCard({
         <p className="mt-3 text-sm" style={{ color: "var(--muted)" }}>
           Pausado: o bot não responde e as campanhas não disparam por este
           número. As mensagens continuam chegando ao painel e podem ser
-          respondidas na mão.
+          respondidas na mão. Pausar o canal padrão tira o padrão dele.
         </p>
       )}
 

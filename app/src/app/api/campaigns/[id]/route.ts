@@ -42,9 +42,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     supabase
       .from("campaigns")
       .select(
+        // O recorte e o canal vão junto: é com eles que a tela abre o
+        // formulário pré-preenchido para reusar a campanha como modelo.
         "id, name, status, media_kind, body, media_url, media_filename, media_mime, " +
           "scheduled_at, started_at, finished_at, window_start, window_end, weekdays, " +
-          "interval_min_seconds, interval_max_seconds, daily_limit"
+          "interval_min_seconds, interval_max_seconds, daily_limit, " +
+          "channel_id, tags, group_ids, sem_grupo"
       )
       .eq("id", id)
       .maybeSingle(),
