@@ -19,11 +19,12 @@ comportamento, não conformidade. Este módulo tenta parecer gente:
 Nenhuma dessas travas é garantia. Comece com teto baixo (50/dia) num número
 que já conversa com clientes há um tempo, e suba devagar.
 
-## As três tabelas
+## As tabelas
 
 | Tabela | Papel |
 |---|---|
-| `chat.audience` | a base de envio: nome, número, tags |
+| `chat.audience` | a base de envio: nome, número, etiquetas, grupo |
+| `chat.contact_groups` | os grupos da empresa |
 | `chat.campaigns` | o que enviar, para quem, em que ritmo |
 | `chat.campaign_recipients` | a fila, um por destinatário, com o status do envio |
 
@@ -32,6 +33,67 @@ com `is_sendable = false` e o motivo em `unsendable_reason`. É isso que impede
 que a reimportação da planilha de amanhã ressuscite quem saiu hoje — o upsert
 de `/api/audience` usa `ignoreDuplicates`, então um número já conhecido é
 ignorado, não sobrescrito.
+
+## Grupo e etiqueta não são a mesma coisa
+
+**Etiqueta é o que o contato tem; grupo é onde ele está.** Etiqueta se acumula
+— alguém pode ser "sul", "obra nova" e "pediu catálogo" ao mesmo tempo. Grupo é
+**um só, ou nenhum**: revendedor não é consumidor final, e as duas coisas pedem
+campanhas diferentes com textos diferentes. Se o grupo aceitasse vários, seria
+etiqueta com outro nome e a tela teria duas maneiras de fazer a mesma coisa.
+
+Na campanha os dois se somam com **E**: grupo "Revendedores" mais etiqueta
+"sul" atinge quem está nos dois. Nenhum dos dois escolhido é a base inteira,
+como sempre foi. Quem quer a união monta duas campanhas — que é o que ela é de
+verdade, com texto próprio para cada lado.
+
+**"Sem grupo" é um recorte de verdade**, não a ausência de filtro: é quem
+entrou pela última planilha e ninguém organizou ainda. Por isso ele é um botão
+à parte (`p_sem_grupo`), e não um item na lista de ids.
+
+A tela mostra a contagem enquanto a pessoa escolhe. Essa conta é feita duas
+vezes de propósito — no navegador, para aparecer antes de existir campanha, e
+no banco, que é quem manda. O número que vale é o que a tela informa depois de
+criar.
+
+Apagar um grupo **não apaga contato nenhum**: eles voltam a não ter grupo. É a
+chave estrangeira que faz isso, e o `set null` nomeia a coluna — sem isso ele
+zeraria `company_id` junto, que é `not null`, e apagar um grupo passaria a dar
+erro.
+
+## Enviar e não enviar
+
+Todo contato nasce podendo receber. Sai da lista por quatro motivos, e o motivo
+fica gravado em `unsendable_reason`:
+
+| Motivo | Quem marca |
+|---|---|
+| `opt_out` | a própria pessoa, pedindo para sair |
+| `no_whatsapp` | o provedor, quando o número não existe no WhatsApp |
+| `send_failed` | uma falha de envio |
+| `manual` | a equipe, pelo botão **Não enviar** |
+
+Os quatro tiram o contato de qualquer recorte. A diferença aparece na volta:
+devolver à lista quem pediu para sair exige uma confirmação com outro texto, e
+o motivo antigo desce para as anotações antes de sumir — é o que sobra de
+registro de que a pessoa pediu.
+
+Nada é apagado por nenhum desses caminhos. A linha marcada é justamente o que
+impede a planilha de amanhã de ressuscitar quem saiu hoje.
+
+## Corrigir o texto com a campanha correndo
+
+Campanha grande sai por horas, e a hora em que alguém percebe o erro de texto é
+sempre depois do primeiro envio. Então o texto se corrige em **Ver mensagem →
+Corrigir texto**, com a campanha em andamento.
+
+Quem já recebeu recebeu — disso não há volta. A fila que falta passa a sair com
+o texto novo, e isso não exigiu nada de novo no disparo: `claim_next_send` lê o
+corpo da campanha a cada envio, então salvar já basta.
+
+Só vale onde ainda existe fila: rascunho, agendada, correndo ou pausada.
+Campanha encerrada ou cancelada recusa com `409` — não sobrou ninguém para
+alcançar com a correção.
 
 ## Importar a base
 
@@ -123,9 +185,9 @@ denúncia, e denúncia é o que queima o número.
 deixa o domingo de fora. (Até a migração `0010` a função usava `dow`, em que
 domingo é 0 — uma tela que gravasse 7 travaria a campanha sem erro nenhum.)
 
-## Sair da lista
+## Sair da lista pedindo
 
-`src/lib/opt-out.ts` compara a mensagem recebida com uma lista de padrões
+O caminho automático do `opt_out` da tabela acima. `src/lib/opt-out.ts` compara a mensagem recebida com uma lista de padrões
 ("pare", "não quero mais receber", "sair"…), e só em mensagens curtas — o
 limite de 160 caracteres evita que um "não quero mais esperar, quero comprar"
 tire um cliente da base.
@@ -160,3 +222,8 @@ mesmo vídeo uma vez por pessoa. Teto de 16 MB, que é o que o WhatsApp aceita.
   avisa quando uma campanha fica dias parada.
 - **Nada impede** criar dez campanhas para a mesma base no mesmo dia. O
   intervalo por canal segura a cadência, mas o teto diário é por campanha.
+- **A campanha não guarda o recorte que a montou.** Grupo e etiqueta escolhidos
+  viram destinatários e somem; a lista de quem recebeu é o único registro. Quem
+  quiser repetir a campanha da semana passada refaz a escolha na mão.
+- **Trocar o grupo de muitos contatos de uma vez** só pela importação, que
+  aplica o grupo ao lote inteiro. Contato a contato, é na linha da tela.

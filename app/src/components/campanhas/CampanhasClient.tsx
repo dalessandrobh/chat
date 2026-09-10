@@ -64,9 +64,10 @@ export function CampanhasClient({ channelId }: { channelId: string | null }) {
     return () => clearInterval(t);
   }, [refresh]);
 
-  // Carrega uma vez e guarda: o texto não muda depois que a campanha existe,
-  // e a lista recarrega a cada 10s — trafegar o corpo inteiro nesse ritmo, para
-  // todas as campanhas, seria pagar caro por algo que quase nunca é olhado.
+  // Carrega uma vez e guarda: a lista recarrega a cada 10s, e trafegar o corpo
+  // inteiro nesse ritmo, para todas as campanhas, seria pagar caro por algo
+  // que quase nunca é olhado. Quem corrige o texto atualiza a cópia guardada
+  // na hora, então ela não fica velha por causa deste cache.
   async function verMensagem(id: string) {
     if (aberta === id) {
       setAberta(null);
@@ -83,6 +84,34 @@ export function CampanhasClient({ channelId }: { channelId: string | null }) {
       return;
     }
     setDetalhes((d) => ({ ...d, [id]: { ...j.campanha, exemploNome: j.exemploNome } }));
+  }
+
+  /**
+   * Corrige o texto de uma campanha que ainda tem fila.
+   *
+   * Não é uma edição de rascunho: vale com a campanha correndo. Quem já
+   * recebeu recebeu — disso não há volta —, e daqui em diante sai o texto
+   * novo, porque a reserva de envio lê o corpo da campanha a cada mensagem.
+   */
+  async function salvarTexto(id: string, body: string) {
+    const r = await fetch(`/api/campaigns/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body }),
+    });
+    const j = await r.json();
+
+    if (!r.ok) {
+      setAviso({ kind: "erro", text: j.error });
+      return false;
+    }
+
+    setDetalhes((d) => ({ ...d, [id]: { ...d[id], body } }));
+    setAviso({
+      kind: "ok",
+      text: "Texto corrigido. Quem ainda está na fila recebe a versão nova.",
+    });
+    return true;
   }
 
   async function mudarStatus(id: string, status: string) {
@@ -193,7 +222,11 @@ export function CampanhasClient({ channelId }: { channelId: string | null }) {
               </div>
 
               {aberta === c.campaign_id && (
-                <Mensagem detalhe={detalhes[c.campaign_id]} />
+                <Mensagem
+                  detalhe={detalhes[c.campaign_id]}
+                  corrigivel={CORRIGIVEL.includes(c.status)}
+                  onSalvar={(body) => salvarTexto(c.campaign_id, body)}
+                />
               )}
 
               <div className="mt-3 h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--bg)" }}>
@@ -230,7 +263,19 @@ export function CampanhasClient({ channelId }: { channelId: string | null }) {
  * pergunta que se faz olhando uma campanha antiga, que é "o que ela leu". O
  * original fica logo abaixo, quando os dois diferem.
  */
-function Mensagem({ detalhe }: { detalhe: Detalhe | undefined }) {
+function Mensagem({
+  detalhe,
+  corrigivel,
+  onSalvar,
+}: {
+  detalhe: Detalhe | undefined;
+  corrigivel: boolean;
+  onSalvar: (body: string) => Promise<boolean>;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [rascunho, setRascunho] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
   if (!detalhe) {
     return (
       <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>
@@ -241,6 +286,8 @@ function Mensagem({ detalhe }: { detalhe: Detalhe | undefined }) {
 
   const nome = detalhe.exemploNome ?? "Maria Silva";
   const corpo = detalhe.body ?? "";
+  // Áudio não tem legenda: não há texto para corrigir.
+  const temTexto = detalhe.media_kind !== "audio";
   const renderizado = corpo.replaceAll("{nome}", nome.split(" ")[0] ?? nome);
   const temPlaceholder = renderizado !== corpo;
 
@@ -268,7 +315,44 @@ function Mensagem({ detalhe }: { detalhe: Detalhe | undefined }) {
         </div>
       )}
 
-      {corpo ? (
+      {editando ? (
+        <div>
+          <textarea
+            value={rascunho}
+            onChange={(e) => setRascunho(e.target.value)}
+            rows={5}
+            maxLength={4000}
+            className="w-full rounded-lg border px-3 py-2 text-sm"
+            style={{ background: "var(--panel)", borderColor: "var(--border)" }}
+          />
+          <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+            Quem já recebeu recebeu o texto antigo — isso não volta atrás. A
+            fila que falta passa a sair com este.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              disabled={salvando}
+              onClick={() => {
+                setSalvando(true);
+                void onSalvar(rascunho).then((ok) => {
+                  setSalvando(false);
+                  if (ok) setEditando(false);
+                });
+              }}
+              className="rounded-lg bg-wa-green px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+            >
+              {salvando ? "Salvando…" : "Salvar texto"}
+            </button>
+            <button
+              onClick={() => setEditando(false)}
+              className="text-xs underline"
+              style={{ color: "var(--muted)" }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : corpo ? (
         <>
           <p className="whitespace-pre-wrap text-sm">{renderizado}</p>
           {temPlaceholder && (
@@ -282,6 +366,16 @@ function Mensagem({ detalhe }: { detalhe: Detalhe | undefined }) {
         <p className="text-sm" style={{ color: "var(--muted)" }}>
           {detalhe.media_kind === "audio" ? "Áudio sem legenda." : "Sem texto."}
         </p>
+      )}
+
+      {corrigivel && temTexto && !editando && (
+        <button
+          onClick={() => { setRascunho(corpo); setEditando(true); }}
+          className="mt-3 rounded-lg border px-2 py-1 text-xs"
+          style={{ borderColor: "var(--border)" }}
+        >
+          Corrigir texto
+        </button>
       )}
 
       <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>
@@ -307,6 +401,15 @@ interface Aviso {
 }
 
 type MediaKind = "text" | "image" | "video" | "audio" | "document";
+
+/**
+ * Onde ainda existe fila para uma correção de texto alcançar.
+ *
+ * A mesma lista mora em `/api/campaigns/:id`, que é quem manda: aqui ela só
+ * decide se o botão aparece. Campanha encerrada ou cancelada não tem o que
+ * corrigir — não sobrou ninguém para receber a versão nova.
+ */
+const CORRIGIVEL = ["draft", "scheduled", "running", "paused"];
 
 const TIPOS: { valor: MediaKind; rotulo: string; accept?: string }[] = [
   { valor: "text", rotulo: "Texto" },
@@ -352,7 +455,14 @@ function Formulario({
   const [quando, setQuando] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagsBase, setTagsBase] = useState<string[]>([]);
-  const [alcance, setAlcance] = useState<{ nome: string; tags: string[] }[]>([]);
+  /** Grupos escolhidos. Vazio quer dizer "todos os grupos". */
+  const [gruposEscolhidos, setGruposEscolhidos] = useState<string[]>([]);
+  /** "Sem grupo" é um recorte de verdade: quem entrou na última planilha. */
+  const [semGrupo, setSemGrupo] = useState(false);
+  const [grupos, setGrupos] = useState<{ id: string; nome: string }[]>([]);
+  const [alcance, setAlcance] = useState<
+    { nome: string; tags: string[]; grupo: string | null }[]
+  >([]);
   const [minSeg, setMinSeg] = useState(45);
   const [maxSeg, setMaxSeg] = useState(120);
   const [teto, setTeto] = useState(150);
@@ -368,17 +478,39 @@ function Formulario({
       const r = await fetch("/api/audience");
       if (!r.ok) return;
       const j = await r.json();
-      const enviaveis = (j.contatos as { name: string; tags: string[] | null; is_sendable: boolean }[])
+      const enviaveis = (
+        j.contatos as {
+          name: string;
+          tags: string[] | null;
+          group_id: string | null;
+          is_sendable: boolean;
+        }[]
+      )
         .filter((c) => c.is_sendable)
-        .map((c) => ({ nome: c.name, tags: c.tags ?? [] }));
+        .map((c) => ({ nome: c.name, tags: c.tags ?? [], grupo: c.group_id }));
       setAlcance(enviaveis);
       setTagsBase([...new Set(enviaveis.flatMap((c) => c.tags))].sort());
+
+      const g = await fetch("/api/groups");
+      if (g.ok) setGrupos((await g.json()).grupos);
     })();
   }, []);
 
-  const destinatarios = tags.length
-    ? alcance.filter((c) => c.tags.some((t) => tags.includes(t))).length
-    : alcance.length;
+  /**
+   * A mesma conta que `chat.enqueue_campaign` faz no banco: grupo e etiqueta
+   * se somam com E.
+   *
+   * Repetida aqui de propósito — o número precisa aparecer enquanto a pessoa
+   * escolhe, antes de existir campanha para consultar. Quem manda é o banco;
+   * isto é a prévia, e por isso a tela mostra depois quantos entraram de fato.
+   */
+  const filtraGrupo = gruposEscolhidos.length > 0 || semGrupo;
+  const destinatarios = alcance.filter((c) => {
+    if (tags.length && !c.tags.some((t) => tags.includes(t))) return false;
+    if (!filtraGrupo) return true;
+    if (semGrupo && c.grupo === null) return true;
+    return c.grupo !== null && gruposEscolhidos.includes(c.grupo);
+  }).length;
 
   const precisaArquivo = tipo !== "text";
   const aceitaLegenda = tipo !== "text" && tipo !== "audio";
@@ -428,6 +560,8 @@ function Formulario({
         mediaMime: anexo?.mime,
         scheduledAt: quando ? new Date(quando).toISOString() : undefined,
         tags: tags.length ? tags : undefined,
+        groupIds: gruposEscolhidos.length ? gruposEscolhidos : undefined,
+        semGrupo: semGrupo || undefined,
         intervalMinSeconds: minSeg,
         intervalMaxSeconds: maxSeg,
         dailyLimit: teto,
@@ -543,7 +677,55 @@ function Formulario({
 
         <div className="sm:col-span-2">
           <label className={rotulo}>Para quem</label>
-          <div className="mt-1 flex flex-wrap gap-2">
+
+          {/* Grupo e etiqueta em linhas separadas porque não são a mesma
+              pergunta: grupo é onde a pessoa está, etiqueta é o que ela tem, e
+              os dois se somam com E. Misturados numa fileira só, a conta que
+              o número em baixo faz não teria como ser adivinhada. */}
+          {(grupos.length > 0 || semGrupo) && (
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <span className="text-xs" style={{ color: "var(--muted)" }}>Grupo:</span>
+              <button
+                onClick={() => { setGruposEscolhidos([]); setSemGrupo(false); }}
+                className={`rounded-lg border px-3 py-1.5 text-sm ${
+                  !filtraGrupo ? "border-wa-teal bg-wa-teal/10 font-medium" : ""
+                }`}
+                style={!filtraGrupo ? undefined : estilo}
+              >
+                Todos
+              </button>
+              {grupos.map((g) => (
+                <button
+                  key={g.id}
+                  onClick={() =>
+                    setGruposEscolhidos((v) =>
+                      v.includes(g.id) ? v.filter((x) => x !== g.id) : [...v, g.id]
+                    )
+                  }
+                  className={`rounded-lg border px-3 py-1.5 text-sm ${
+                    gruposEscolhidos.includes(g.id) ? "border-wa-teal bg-wa-teal/10 font-medium" : ""
+                  }`}
+                  style={gruposEscolhidos.includes(g.id) ? undefined : estilo}
+                >
+                  {g.nome}
+                </button>
+              ))}
+              <button
+                onClick={() => setSemGrupo((v) => !v)}
+                className={`rounded-lg border px-3 py-1.5 text-sm ${
+                  semGrupo ? "border-wa-teal bg-wa-teal/10 font-medium" : ""
+                }`}
+                style={semGrupo ? undefined : estilo}
+              >
+                Sem grupo
+              </button>
+            </div>
+          )}
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {grupos.length > 0 && (
+              <span className="text-xs" style={{ color: "var(--muted)" }}>Etiqueta:</span>
+            )}
             <button
               onClick={() => setTags([])}
               className={`rounded-lg border px-3 py-1.5 text-sm ${
@@ -551,7 +733,7 @@ function Formulario({
               }`}
               style={tags.length === 0 ? undefined : estilo}
             >
-              Base inteira
+              {grupos.length > 0 ? "Todas" : "Base inteira"}
             </button>
             {tagsBase.map((t) => (
               <button

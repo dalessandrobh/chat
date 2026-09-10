@@ -27,9 +27,20 @@ const patchSchema = z.object({
     .regex(/^[1-9][0-9]{7,14}$/, "Número em E.164 sem símbolos, ex.: 5531999998888")
     .optional(),
   tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+  /** Grupo do contato. `null` explícito tira do grupo em que ele estava. */
+  groupId: z.string().uuid().nullable().optional(),
   /** Tira a marca de fora da lista. Exige `confirmo`. */
   reativar: z.boolean().optional(),
   confirmo: z.boolean().optional(),
+  /**
+   * Marca o contato como "não enviar", na mão.
+   *
+   * É o oposto de `reativar`, e o motivo gravado é `manual` — não `opt_out`.
+   * A diferença importa: opt-out é a pessoa pedindo para sair, e a tela pede
+   * confirmação antes de desfazer. Tirar da lista por decisão da equipe é uma
+   * escolha de quem opera, e volta com um clique.
+   */
+  naoEnviar: z.boolean().optional(),
 });
 
 function forbidden() {
@@ -54,7 +65,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
   }
-  const { name, waId, tags, reativar, confirmo } = parsed.data;
+  const { name, waId, tags, groupId, reativar, confirmo, naoEnviar } = parsed.data;
 
   const { id } = await params;
   const supabase = await supabaseServer();
@@ -70,6 +81,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (name !== undefined) mudanca.name = name;
   if (waId !== undefined) mudanca.wa_id = waId;
   if (tags !== undefined) mudanca.tags = tags;
+  if (groupId !== undefined) mudanca.group_id = groupId;
+
+  // Sair da lista por decisão da equipe. Não mexe em quem já está fora: o
+  // motivo de lá é mais forte que este, e sobrescrever apagaria o registro de
+  // que a pessoa pediu para sair.
+  if (naoEnviar && atual.is_sendable) {
+    mudanca.is_sendable = false;
+    mudanca.unsendable_reason = "manual";
+    mudanca.unsendable_at = new Date().toISOString();
+  }
 
   if (reativar && !atual.is_sendable) {
     if (!confirmo) {
@@ -101,7 +122,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .from("audience")
     .update(mudanca)
     .eq("id", id)
-    .select("id, name, wa_id, tags, is_sendable, unsendable_reason, unsendable_at")
+    .select("id, name, wa_id, tags, group_id, is_sendable, unsendable_reason, unsendable_at")
     .maybeSingle();
 
   if (error) {

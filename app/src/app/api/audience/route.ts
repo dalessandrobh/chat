@@ -23,9 +23,18 @@ const contatoSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
 });
 
+/**
+ * Grupo aplicado à importação inteira, e não contato a contato.
+ *
+ * Planilha chega de uma origem só — a lista da feira, a base do revendedor —
+ * e é aí que o grupo é sabido. Pedir a coluna na planilha seria pedir que
+ * quem exportou já soubesse dos grupos daqui.
+ */
+const grupoDoLote = z.string().uuid().optional();
+
 const postSchema = z.union([
-  contatoSchema,
-  z.object({ contatos: z.array(contatoSchema).min(1).max(5000) }),
+  contatoSchema.extend({ groupId: grupoDoLote }),
+  z.object({ contatos: z.array(contatoSchema).min(1).max(5000), groupId: grupoDoLote }),
 ]);
 
 function forbidden() {
@@ -36,16 +45,24 @@ export async function GET(request: Request) {
   const agent = await currentAgent();
   if (!agent) return unauthorized();
 
-  const busca = new URL(request.url).searchParams.get("q")?.trim();
+  const params = new URL(request.url).searchParams;
+  const busca = params.get("q")?.trim();
+  /** Id de grupo, `sem` para quem não tem grupo, ou nada para a base inteira. */
+  const grupo = params.get("grupo")?.trim();
   const supabase = await supabaseServer();
 
   let query = supabase
     .from("audience")
-    .select("id, name, wa_id, tags, is_sendable, unsendable_reason, unsendable_at, created_at")
+    .select("id, name, wa_id, tags, group_id, is_sendable, unsendable_reason, unsendable_at, created_at")
     .order("created_at", { ascending: false })
     .limit(500);
 
   if (busca) query = query.or(`name.ilike.%${busca}%,wa_id.ilike.%${busca}%`);
+
+  // Filtrar no servidor, e não na tela: a lista para na linha 500, e filtrar
+  // depois disso mostraria "o grupo tem 3 contatos" quando tem trezentos.
+  if (grupo === "sem") query = query.is("group_id", null);
+  else if (grupo) query = query.eq("group_id", grupo);
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -84,6 +101,7 @@ export async function POST(request: Request) {
   }
 
   const lista = "contatos" in parsed.data ? parsed.data.contatos : [parsed.data];
+  const grupo = parsed.data.groupId ?? null;
 
   // `ignoreDuplicates` em vez de sobrescrever: reimportar a planilha inteira
   // não pode ressuscitar quem pediu para sair na semana passada.
@@ -95,6 +113,7 @@ export async function POST(request: Request) {
         name: c.name,
         wa_id: c.waId,
         tags: c.tags ?? [],
+        group_id: grupo,
         company_id: agent.company_id,
       })),
       { onConflict: "company_id,wa_id", ignoreDuplicates: true }

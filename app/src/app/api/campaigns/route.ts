@@ -19,6 +19,10 @@ const schema = z.object({
   mediaMime: z.string().max(120).optional(),
   scheduledAt: z.string().datetime({ offset: true }).optional(),
   tags: z.array(z.string()).max(20).optional(),
+  /** Grupos a atingir. Vazio ou ausente quer dizer "todos os grupos". */
+  groupIds: z.array(z.string().uuid()).max(50).optional(),
+  /** Inclui quem ainda não tem grupo — quem entrou pela última planilha. */
+  semGrupo: z.boolean().optional(),
   intervalMinSeconds: z.number().int().min(5).max(3600).optional(),
   intervalMaxSeconds: z.number().int().min(5).max(7200).optional(),
   dailyLimit: z.number().int().min(1).max(1000).optional(),
@@ -86,9 +90,14 @@ export async function POST(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
+  // Grupo e etiqueta se somam com E: "Revendedores" mais "sul" atinge quem
+  // está nos dois. Quem quer a união monta duas campanhas — que é o que ela é
+  // de verdade, com texto próprio para cada lado.
   const { data: total, error: filaError } = await supabase.rpc("enqueue_campaign", {
     p_campaign_id: campanha.id,
     p_tags: d.tags?.length ? d.tags : null,
+    p_group_ids: d.groupIds?.length ? d.groupIds : null,
+    p_sem_grupo: d.semGrupo ?? false,
   });
 
   if (filaError) {

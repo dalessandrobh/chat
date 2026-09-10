@@ -1,9 +1,15 @@
 /**
  * GET   /api/campaigns/:id — o conteúdo exato que foi (ou será) enviado
- * PATCH /api/campaigns/:id — pausa, retoma, cancela ou agenda
+ * PATCH /api/campaigns/:id — pausa, retoma, cancela, agenda ou corrige o texto
  *
  * Pausar é a alavanca que importa. Campanha grande sai por horas, e a hora em
  * que alguém percebe o erro de texto é sempre depois do primeiro envio.
+ *
+ * Por isso o texto também se corrige aqui, com a campanha correndo. Quem já
+ * recebeu recebeu — não há como voltar atrás disso —, mas a fila que falta
+ * passa a sair certa: `claim_next_send` lê o corpo da campanha a cada envio,
+ * então salvar já basta. O que não se corrige é campanha encerrada ou
+ * cancelada: ali não sobrou fila para aproveitar a correção.
  */
 
 import { NextResponse } from "next/server";
@@ -15,7 +21,12 @@ import { canManageTemplates } from "@/lib/roles";
 const schema = z.object({
   status: z.enum(["scheduled", "running", "paused", "canceled"]).optional(),
   scheduledAt: z.string().datetime({ offset: true }).nullable().optional(),
+  /** Texto da mensagem, ou legenda da mídia. Vale para a fila que falta. */
+  body: z.string().max(4000).optional(),
 });
+
+/** Onde ainda existe fila para a correção aproveitar. */
+const CORRIGIVEL = ["draft", "scheduled", "running", "paused"];
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const agent = await currentAgent();
@@ -68,11 +79,38 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const patch: Record<string, unknown> = {};
   if (parsed.data.status) patch.status = parsed.data.status;
   if (parsed.data.scheduledAt !== undefined) patch.scheduled_at = parsed.data.scheduledAt;
+  if (parsed.data.body !== undefined) patch.body = parsed.data.body;
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "Nada para alterar." }, { status: 400 });
   }
 
   const supabase = await supabaseServer();
+
+  if (parsed.data.body !== undefined) {
+    const { data: alvo } = await supabase
+      .from("campaigns")
+      .select("status, media_kind")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!alvo) return NextResponse.json({ error: "Campanha não encontrada." }, { status: 404 });
+
+    if (!CORRIGIVEL.includes(alvo.status)) {
+      return NextResponse.json(
+        { error: "Esta campanha já terminou; não há fila para o texto novo alcançar." },
+        { status: 409 }
+      );
+    }
+
+    // O `check` da tabela recusaria de qualquer jeito, mas com a mensagem do
+    // Postgres. Campanha de texto sem texto é o erro fácil de cometer editando.
+    if (alvo.media_kind === "text" && parsed.data.body.trim() === "") {
+      return NextResponse.json(
+        { error: "Campanha de texto não pode ficar sem texto." },
+        { status: 400 }
+      );
+    }
+  }
 
   // "Disparar agora" pula a promoção scheduled → running feita no banco, que é
   // onde started_at seria preenchido — e é o primeiro dado que se procura
@@ -91,7 +129,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .from("campaigns")
     .update(patch)
     .eq("id", id)
-    .select("id, name, status, scheduled_at")
+    .select("id, name, status, scheduled_at, body")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });

@@ -390,6 +390,138 @@ begin
 end $$;
 reset role;
 
+\echo '=== grupo e etiqueta recortam a base, e param na empresa ==='
+
+-- Segmentar errado não dá erro: dá uma campanha para a lista errada, que é o
+-- tipo de falha que só se descobre pelo telefone tocando.
+--
+-- Uma campanha por cenário, em vez de esvaziar a fila entre um e outro:
+-- atendente não apaga destinatário, e o teste roda como atendente de propósito
+-- — é assim que a tela chama a função.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111aa","role":"authenticated"}';
+do $$
+declare
+  v_a     uuid := '11111111-1111-1111-1111-111111111111';
+  v_canal uuid := '11111111-0000-0000-0000-0000000000c1';
+  v_grupo    uuid;
+  v_campanha uuid;
+  v_qtd      integer;
+  -- A empresa A já recebe contatos numa seção anterior deste arquivo, então o
+  -- esperado dos recortes largos se calcula, não se crava. Os recortes por
+  -- grupo são exatos porque o grupo é só destes quatro.
+  v_esperado integer;
+begin
+  insert into chat.contact_groups (nome) values ('Revendedores') returning id into v_grupo;
+
+  -- Quatro contatos: dois no grupo (um com a etiqueta), dois sem grupo.
+  insert into chat.audience (company_id, name, wa_id, tags, group_id) values
+    (v_a, 'Rev com etiqueta',  '5531900000001', '{recorte-teste}', v_grupo),
+    (v_a, 'Rev sem etiqueta',  '5531900000002', '{}',               v_grupo),
+    (v_a, 'Solto com etiqueta','5531900000003', '{recorte-teste}',  null),
+    (v_a, 'Solto sem nada',    '5531900000004', '{}',               null);
+
+  -- Grupo e etiqueta se somam com E: só o primeiro dos quatro.
+  insert into chat.campaigns (company_id, channel_id, name, body)
+  values (v_a, v_canal, 'Recorte 1', 'oi') returning id into v_campanha;
+  v_qtd := chat.enqueue_campaign(v_campanha, '{recorte-teste}', array[v_grupo]);
+  if v_qtd <> 1 then
+    raise exception 'FALHOU: grupo mais etiqueta deveria pegar 1, pegou %', v_qtd;
+  end if;
+
+  -- Só o grupo: os dois do grupo.
+  insert into chat.campaigns (company_id, channel_id, name, body)
+  values (v_a, v_canal, 'Recorte 2', 'oi') returning id into v_campanha;
+  v_qtd := chat.enqueue_campaign(v_campanha, null, array[v_grupo]);
+  if v_qtd <> 2 then
+    raise exception 'FALHOU: só o grupo deveria pegar 2, pegou %', v_qtd;
+  end if;
+
+  -- Só quem não tem grupo: os dois deste bloco, mais os que a empresa já tinha.
+  select count(*) into v_esperado
+    from chat.audience
+   where company_id = v_a and is_sendable and group_id is null;
+
+  insert into chat.campaigns (company_id, channel_id, name, body)
+  values (v_a, v_canal, 'Recorte 3', 'oi') returning id into v_campanha;
+  v_qtd := chat.enqueue_campaign(v_campanha, null, null, true);
+  if v_qtd <> v_esperado then
+    raise exception 'FALHOU: sem grupo deveria pegar %, pegou %', v_esperado, v_qtd;
+  end if;
+
+  -- Nada escolhido continua sendo a base inteira, como antes desta migration.
+  select count(*) into v_esperado
+    from chat.audience where company_id = v_a and is_sendable;
+
+  insert into chat.campaigns (company_id, channel_id, name, body)
+  values (v_a, v_canal, 'Recorte 4', 'oi') returning id into v_campanha;
+  v_qtd := chat.enqueue_campaign(v_campanha);
+  if v_qtd <> v_esperado then
+    raise exception 'FALHOU: sem filtro deveria pegar a base inteira (%), pegou %', v_esperado, v_qtd;
+  end if;
+
+  -- Quem está fora da lista não entra em recorte nenhum.
+  update chat.audience
+     set is_sendable = false, unsendable_reason = 'manual', unsendable_at = now()
+   where wa_id = '5531900000001';
+  insert into chat.campaigns (company_id, channel_id, name, body)
+  values (v_a, v_canal, 'Recorte 5', 'oi') returning id into v_campanha;
+  v_qtd := chat.enqueue_campaign(v_campanha, null, array[v_grupo]);
+  if v_qtd <> 1 then
+    raise exception 'FALHOU: "não enviar" não tirou o contato do recorte, pegou %', v_qtd;
+  end if;
+
+  -- O grupo é da empresa: nem aparece para B, nem aceita contato de B.
+  if exists (select 1 from chat.contact_groups where company_id <> v_a) then
+    raise exception 'FALHOU: A enxergou grupo de outra empresa';
+  end if;
+
+  -- Pela tela, quem barra é a RLS, e ela barra calada: o update não encontra
+  -- a linha de B, então não falha — simplesmente não muda nada. Testar o erro
+  -- aqui seria testar a mensagem errada; o que importa é que B ficou intacto.
+  update chat.audience set group_id = v_grupo
+   where company_id = '22222222-2222-2222-2222-222222222222';
+
+  -- Apagar o grupo devolve os contatos para "sem grupo", sem perder ninguém.
+  delete from chat.contact_groups where id = v_grupo;
+  if exists (select 1 from chat.audience where group_id = v_grupo) then
+    raise exception 'FALHOU: sobrou contato apontando para grupo apagado';
+  end if;
+  if (select count(*) from chat.audience where wa_id like '55319000000%') <> 4 then
+    raise exception 'FALHOU: apagar o grupo levou contato junto';
+  end if;
+
+  raise notice 'ok: grupo e etiqueta recortam com E, e o grupo é da empresa';
+end $$;
+reset role;
+
+-- A RLS protege quem entra pela tela. Quem entra com chave de serviço a ignora,
+-- e aí quem barra é a chave composta — a mesma ideia da memória do contato.
+do $$
+declare
+  v_grupo uuid;
+begin
+  insert into chat.contact_groups (company_id, nome)
+  values ('11111111-1111-1111-1111-111111111111', 'Grupo de A')
+  returning id into v_grupo;
+
+  if exists (select 1 from chat.audience
+              where company_id = '22222222-2222-2222-2222-222222222222'
+                and group_id is not null) then
+    raise exception 'FALHOU: a RLS deixou A colocar contato de B num grupo dele';
+  end if;
+
+  begin
+    update chat.audience set group_id = v_grupo
+     where company_id = '22222222-2222-2222-2222-222222222222';
+    raise exception 'FALHOU: sem RLS, o banco aceitou grupo de outra empresa';
+  exception
+    when foreign_key_violation then null;
+  end;
+
+  raise notice 'ok: nem pela tela nem pelo servidor o grupo atravessa empresa';
+end $$;
+
 \echo '=== o descadastro de A não atinge B ==='
 
 do $$
