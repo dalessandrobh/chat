@@ -23,6 +23,7 @@ import {
 } from "@/lib/qualificacao";
 import { camposDaEmpresa, perfilDaEmpresa } from "@/lib/diretrizes";
 import { filaForaDoExpediente } from "@/lib/horario";
+import { memoriaDoContato } from "@/lib/memoria";
 
 /** Teto de mensagens no contexto. Conversa de WhatsApp é longa e picotada;
  *  as 40 últimas cobrem o assunto atual sem inflar o prompt. */
@@ -69,9 +70,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   // Vêm junto pelo mesmo motivo da base: o workflow já faz esta chamada, e
   // um agente que precisasse de três chamadas para saber como falar teria
   // três lugares para falhar.
-  const [perfil, campos] = await Promise.all([
+  // A memória do contato entra pelo mesmo caminho, e pelo mesmo motivo: o
+  // workflow já faz esta chamada. Ela é do contato, não da conversa — é essa a
+  // diferença entre lembrar da pessoa e lembrar do que foi dito hoje.
+  const [perfil, campos, memoria] = await Promise.all([
     perfilDaEmpresa(conversation.company_id),
     camposDaEmpresa(conversation.company_id),
+    memoriaDoContato(conversation.contact_id),
   ]);
 
   const { data: messages } = await db
@@ -147,6 +152,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
      * o texto de quem opera não revoga o que faz a ferramenta funcionar.
      */
     perfil,
+    /**
+     * O que se sabe desta pessoa de conversas anteriores, cada linha com
+     * quanto tempo faz. Vazio quando é a primeira vez — e aí o bloco nem é
+     * escrito no prompt, em vez de virar um "(nada)" para o modelo comentar.
+     */
+    memoria,
     /**
      * O workflow checa isto antes de responder, no lugar do `mode`: é a vez do
      * bot em modo `bot` e, fora do expediente, também na conversa que espera

@@ -8,6 +8,7 @@ import type { AgenteResumo, InboxRow, Message, Template } from "@/lib/types";
 import { ConversationList, type Aba } from "./ConversationList";
 import { MessageThread } from "./MessageThread";
 import { HandoffBar } from "./HandoffBar";
+import { MemoriaDoContato } from "./MemoriaDoContato";
 import { Composer } from "./Composer";
 
 export function InboxClient({
@@ -259,6 +260,14 @@ export function InboxClient({
               agenteId={agenteId}
               agentes={agentes}
               onChanged={refresh}
+            />
+            {/* Entre a barra e a conversa, recolhida: quem abre a conversa
+                quer ler a conversa. Mas antes de responder a alguém que já
+                falou aqui, o que se sabe dela está a um clique. */}
+            <MemoriaDoContato
+              key={selected.contact_id}
+              contactId={selected.contact_id}
+              contactName={selected.contact_name}
             />
             <MessageThread messages={messages} contactName={selected.contact_name} />
             <Composer

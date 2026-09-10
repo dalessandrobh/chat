@@ -36,6 +36,18 @@ export interface InboxRow {
   silenciada_motivo: string | null;
 }
 
+/**
+ * Uma linha da memória do contato: o que se sabe dele entre uma conversa e
+ * outra. `origem` separa o que o bot apurou do que a equipe escreveu — e é o
+ * que decide o que o limite poda.
+ */
+export interface ContactMemory {
+  id: string;
+  fato: string;
+  origem: "bot" | "agente";
+  created_at: string;
+}
+
 /** Um atendente da empresa, para a lista de direcionamento. */
 export interface AgenteResumo {
   id: string;

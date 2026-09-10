@@ -14,6 +14,12 @@
  *
  * Guardamos no contato, não na conversa: a pessoa some por um mês, volta, e a
  * cidade dela continua sendo a mesma.
+ *
+ * A mesma rota recebe `lembrar`, que é o que a pessoa contou de si e não cabe
+ * em campo cadastrado — preferência, contexto, o que aconteceu da última vez.
+ * Vem junto e não numa ferramenta própria porque é o mesmo gesto do agente
+ * ("descobri algo sobre esta pessoa") e porque cada ferramenta a mais é uma
+ * chance a mais de o modelo chamar a errada.
  */
 
 import { NextResponse } from "next/server";
@@ -27,6 +33,7 @@ import {
   type Campo,
   type Qualificacao,
 } from "@/lib/qualificacao";
+import { gravarFatos, limparFatos } from "@/lib/memoria";
 
 /**
  * Modelo de linguagem manda campo vazio com frequência — string em branco,
@@ -46,6 +53,12 @@ const bodySchema = z.object({
   dados: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
   /** Aceita "cidade,pessoas" ou ["cidade","pessoas"]: o modelo usa as duas formas. */
   dispensados: z.union([z.string(), z.array(z.string())]).optional(),
+  /**
+   * O que a pessoa contou de si e não é campo cadastrado. Uma frase por item;
+   * texto com quebras de linha vira várias. O teto e a limpeza são de
+   * `lib/memoria.ts`, porque modelo manda parágrafo onde se pediu frase.
+   */
+  lembrar: z.union([z.string(), z.array(z.string())]).optional(),
 });
 
 /** `dados` como objeto, venha ele como objeto ou como JSON dentro de string. */
@@ -166,6 +179,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Depois da qualificação, e nunca antes: memória é ganho, qualificação é o
+  // combinado. Falha ao gravar fato não pode custar a resposta desta rota, e é
+  // por isso que `gravarFatos` engole o próprio erro em vez de estourar.
+  const lembrados = await gravarFatos({
+    contactId: conversation.contact_id,
+    companyId: conversation.company_id,
+    conversationId: id,
+    fatos: limparFatos(parsed.data.lembrar),
+  });
+
   const pendentes = faltando(qualificacao, campos);
 
   // A resposta volta para o agente no mesmo turno: ele já sabe o que sobrou
@@ -176,8 +199,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     /** O que o agente mandou e não está cadastrado. Vai na resposta em vez de
      *  sumir: é assim que se descobre que o prompt e a fila divergiram. */
     ignorado: Object.keys(dados).filter(
-      (chave) => chave !== "dados" && chave !== "dispensados" && !cadastradas.has(chave)
+      (chave) =>
+        chave !== "dados" &&
+        chave !== "dispensados" &&
+        chave !== "lembrar" &&
+        !cadastradas.has(chave)
     ),
+    /** O que virou memória do contato. Repetido não aparece: já se sabia. */
+    lembrado: lembrados,
     falta: pendentes.map((campo) => `${campo.chave} — ${campo.pergunta}`),
     qualificacaoCompleta: pendentes.length === 0,
   });

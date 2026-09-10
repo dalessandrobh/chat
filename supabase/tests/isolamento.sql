@@ -328,6 +328,68 @@ begin
   raise notice 'ok: fora do expediente o bot atende a fila; em expediente, não';
 end $$;
 
+\echo '=== a memória do contato para na empresa dele ==='
+
+-- Memória é o que se sabe da pessoa entre uma conversa e outra, e por isso é
+-- o dado mais fácil de vazar sem ninguém notar: ninguém abre a tela do
+-- contato de outra empresa, mas o prompt lê sozinho, toda mensagem.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-1111111111a2","role":"authenticated"}';
+do $$
+declare
+  v_contato_a uuid := '11111111-0000-0000-0000-0000000000c2';
+  v_contato_b uuid := '22222222-0000-0000-0000-0000000000c2';
+begin
+  -- Atendente comum anota à mão: é ferramenta de quem atende, e A2 é 'agent'.
+  -- `company_id` nem é passado — o default lê de quem está logado.
+  insert into chat.contact_memory (contact_id, fato, origem)
+  values (v_contato_a, 'prefere ser chamada de Bia', 'agente');
+
+  if (select company_id from chat.contact_memory where contact_id = v_contato_a)
+     <> '11111111-1111-1111-1111-111111111111' then
+    raise exception 'FALHOU: a memória nasceu com a empresa errada';
+  end if;
+
+  -- Contato de B com a empresa de A: a política de escrita só olha a empresa
+  -- da linha, e a linha estaria dizendo a verdade. Quem recusa é a chave
+  -- composta.
+  begin
+    insert into chat.contact_memory (contact_id, fato)
+    values (v_contato_b, 'memória plantada de fora');
+    raise exception 'FALHOU: A gravou memória num contato de B';
+  exception
+    when foreign_key_violation then null;
+  end;
+
+  -- E o que B sabe do contato dele, A não lê.
+  if exists (select 1 from chat.contact_memory
+              where company_id = '22222222-2222-2222-2222-222222222222') then
+    raise exception 'FALHOU: A enxergou a memória de B';
+  end if;
+
+  -- O bloco do prompt é montado por função que confere a empresa sozinha.
+  if chat.render_contact_memory(v_contato_a) not like '%chamada de Bia%' then
+    raise exception 'FALHOU: a memória de A não chegou ao prompt de A';
+  end if;
+
+  begin
+    perform chat.render_contact_memory(v_contato_b);
+    raise exception 'FALHOU: A montou a memória do contato de B';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  -- Apagar é por linha, não por contato: quem pede para ser esquecido de uma
+  -- coisa não está pedindo para sumir inteiro.
+  delete from chat.contact_memory where contact_id = v_contato_a;
+  if chat.render_contact_memory(v_contato_a) <> '' then
+    raise exception 'FALHOU: a anotação apagada continuou no prompt';
+  end if;
+
+  raise notice 'ok: a memória do contato não atravessa empresa, e some quando apagada';
+end $$;
+reset role;
+
 \echo '=== o descadastro de A não atinge B ==='
 
 do $$

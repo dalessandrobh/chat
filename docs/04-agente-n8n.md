@@ -36,6 +36,9 @@ devolve a conversa inteira do banco — painel, celular e bot na mesma linha do
 tempo. As 40 últimas mensagens, o bastante para o assunto atual sem inflar o
 prompt.
 
+Isso é a memória **da conversa**. A memória **da pessoa**, que atravessa
+conversas, é outra coisa e está em [A memória do contato](#a-memória-do-contato).
+
 ## Versão do n8n
 
 Rodando **2.37.4**. A mínima é 1.123: as anteriores mandavam `top_p: -1` em
@@ -370,6 +373,74 @@ parâmetro por campo. `anotar_dados` manda um objeto: `{"cidade": "Belo
 Horizonte", "pessoas": 4}`. Chave que não estiver cadastrada é descartada na
 rota e volta em `ignorado` — modelo inventa chave, e dado inventado no
 metadata do contato ninguém descobre depois.
+
+## A memória do contato
+
+A fila de qualificação guarda o que a empresa perguntou. O que a pessoa conta
+de si fora disso — como prefere ser chamada, com o que trabalha, por que está
+procurando agora — morria com a conversa. Ela voltava em março, repetia a
+história de janeiro, e o atendimento recomeçava do zero: que é exatamente a
+sensação de falar com um robô.
+
+Agora vira linha em `chat.contact_memory`, uma frase por vez, presa ao contato
+e não à conversa. O agente manda em `lembrar`, na mesma chamada de
+`anotar_dados` que ele já fazia — uma ferramenta a mais seria uma chance a mais
+de o modelo chamar a errada.
+
+### O que impede isso de virar uma máquina de afirmar coisa velha
+
+Memória é o caminho mais curto para o bot dizer com intimidade algo que deixou
+de ser verdade. Três coisas seguram isso, e nenhuma delas está no prompt:
+
+- **Quando.** Todo fato guarda a data, e o prompt recebe "há 3 meses" colado
+  na frase. Sem isso o modelo trata a intenção de compra do ano passado como se
+  fosse de hoje. O prompt manda confirmar antes de agir sobre coisa antiga.
+- **Quem.** `origem` separa o que o bot apurou do que um atendente escreveu. O
+  que uma pessoa digitou não é podado por robô nenhum.
+- **Apagável um a um.** A unidade é a linha, não o contato: quem pede para ser
+  esquecido de uma coisa não está pedindo para sumir inteiro.
+
+E a regra que o prompt repete: memória é **pista sobre a pessoa, nunca fato
+sobre a empresa**. Preço, prazo, condição e disponibilidade continuam saindo só
+da base — o bloco da memória diz isso ao modelo em voz alta.
+
+### Dois tetos, por dois motivos diferentes
+
+| Teto | Onde | Por quê |
+|---|---|---|
+| 40 fatos do bot por contato | gatilho na tabela | memória sem teto é prompt sem teto; sai sempre o mais antigo **do bot** |
+| 20 linhas no prompt | `chat.render_contact_memory` | o que a equipe escreveu vem primeiro, depois o mais recente |
+
+O teto de armazenamento existe para não perder o que foi dito; o do prompt,
+para o modelo conseguir ler. São perguntas diferentes e por isso são números
+diferentes.
+
+Repetido não entra: `chave` é coluna gerada — a frase sem caixa e sem espaço
+sobrando — e um índice único cai sobre ela. O modelo conta a mesma coisa três
+turnos seguidos, e a linha continua sendo uma.
+
+### A tela
+
+No inbox, recolhida entre a barra de handoff e a conversa: **Sobre a Mary ·
+3 anotações**. Aberta, cada linha tem um × e há um campo para anotar à mão.
+
+Não é enfeite. Sem ela a memória seria um depósito cego: o modelo entende
+errado, e a frase errada entraria em todo prompt futuro sem ninguém ver. É
+também por ali que se apaga um item a pedido de quem escreveu.
+
+### Onde não fica
+
+No Postgres do n8n, não. Memória do contato é dado de cliente: precisa da mesma
+RLS de `contacts` — a memória de uma empresa não pode chegar ao agente de outra
+—, precisa aparecer no painel, e precisa sobreviver a um workflow reimportado.
+O banco do n8n foi separado de propósito para as automações não dependerem do
+ciclo de vida do Supabase; dado de cliente ali dentro desfaria a separação.
+
+O banco exige o parentesco, em vez de confiar em quem chama: `company_id` nasce
+de `chat.current_company()` e a chave estrangeira é composta,
+`(contact_id, company_id) → contacts (id, company_id)`. Passar o id de um
+contato de outra empresa não passa pela política de escrita — ela olharia a
+empresa da linha, e a linha estaria dizendo a verdade.
 
 ## Testar
 
