@@ -8,6 +8,7 @@ import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { currentAgent, unauthorized } from "@/lib/auth";
 import { canManageTemplates } from "@/lib/roles";
+import { conferirNumeros } from "@/lib/conferir-numeros";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Dê um nome à campanha").max(160),
@@ -126,5 +127,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: filaError.message }, { status: 400 });
   }
 
-  return NextResponse.json({ campanha, destinatarios: total ?? 0 });
+  // Conferir quem existe no WhatsApp, agora que a fila está montada e antes de
+  // qualquer disparo.
+  //
+  // Em 10/09/2026 uma campanha por um número novo mandou 86 mensagens, 20 para
+  // números inexistentes, e o WhatsApp encerrou a sessão no meio. Descobrir
+  // pelo disparo custa a reputação do número; descobrir aqui custa uma
+  // pergunta em lote.
+  //
+  // Falha na conferência não derruba a campanha: sem ela o mundo volta a ser o
+  // de antes, que é o mundo que funcionava.
+  const { data: fila } = await supabase
+    .from("campaign_recipients")
+    .select("wa_id")
+    .eq("campaign_id", campanha.id);
+
+  const conferencia = await conferirNumeros({
+    companyId: agent.company_id,
+    channelId: d.channelId,
+    waIds: (fila ?? []).map((l) => l.wa_id as string),
+  });
+
+  return NextResponse.json({
+    campanha,
+    // O total desconta quem saiu na conferência: é o número de gente que a
+    // campanha vai mesmo alcançar, e é ele que a tela anuncia.
+    destinatarios: Math.max(0, (total ?? 0) - conferencia.semWhatsapp),
+    semWhatsapp: conferencia.semWhatsapp,
+    conferenciaFalhou: conferencia.erro,
+  });
 }

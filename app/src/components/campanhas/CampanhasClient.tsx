@@ -911,10 +911,23 @@ function Formulario({
       setErro(j.error);
       return;
     }
-    await onDone({
-      kind: "ok",
-      text: `Campanha criada para ${j.destinatarios} destinatários.`,
-    });
+    // A conferência é a parte que a pessoa precisa ver: "criada para 160" sem
+    // explicar os 20 que sumiram faria a conta parecer errada.
+    const partes = [`Campanha criada para ${j.destinatarios} destinatários.`];
+    if (j.semWhatsapp > 0) {
+      partes.push(
+        `${j.semWhatsapp} ${j.semWhatsapp === 1 ? "número não tem" : "números não têm"} ` +
+          `WhatsApp e ${j.semWhatsapp === 1 ? "saiu" : "saíram"} da lista antes do disparo.`
+      );
+    }
+    if (j.conferenciaFalhou) {
+      partes.push(
+        `Não deu para conferir os números desta vez (${j.conferenciaFalhou}) — ` +
+          `a campanha vale do mesmo jeito.`
+      );
+    }
+
+    await onDone({ kind: "ok", text: partes.join(" ") });
   }
 
   const rotulo = "text-xs font-medium";

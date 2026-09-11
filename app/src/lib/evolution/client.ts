@@ -181,6 +181,37 @@ export function sendText(conn: ConexaoEvolution,
   });
 }
 
+/** Uma linha da resposta de `/chat/whatsappNumbers`. */
+export interface NumeroConferido {
+  /** Ecoa exatamente o que foi perguntado — é por ele que se casa a resposta. */
+  number: string;
+  exists: boolean;
+  jid: string;
+}
+
+/**
+ * Quais destes números existem no WhatsApp.
+ *
+ * A Evolution pergunta ao próprio WhatsApp, em lote. É a checagem que evita
+ * gastar a reputação de um número para descobrir que um quinto da lista não
+ * existe — que foi o que aconteceu em 10/09/2026, com o WhatsApp encerrando a
+ * sessão no meio da campanha.
+ *
+ * O `jid` volta na forma canônica (sem o 9 opcional), mas quem casa a resposta
+ * com a pergunta é `number`, que ecoa o que foi enviado.
+ */
+export function whatsappNumbers(
+  conn: ConexaoEvolution,
+  instance: string,
+  numbers: string[]
+): Promise<NumeroConferido[]> {
+  return evoFetch<NumeroConferido[]>(
+    conn,
+    `/chat/whatsappNumbers/${encodeURIComponent(instance)}`,
+    { method: "POST", body: JSON.stringify({ numbers }) }
+  );
+}
+
 export type EvolutionMediaType = "image" | "document" | "video" | "audio";
 
 export function sendMedia(conn: ConexaoEvolution,

@@ -156,6 +156,39 @@ novo.
 Vale para qualquer campanha, inclusive as encerradas: são justamente elas que
 já provaram o que funciona.
 
+## Conferir o número antes de disparar
+
+Em **10/09/2026** uma campanha saiu por um número novo para 180 contatos. Das
+86 mensagens que chegou a mandar, **20 foram para números que não existem no
+WhatsApp**. Nove minutos depois o WhatsApp encerrou a sessão daquele número:
+
+```
+17:40:49  state: 'close',  statusReason: 401
+17:40:49  WARN [WAMonitoringService]  Instance "campanhas-…" - LOGOUT
+```
+
+`401` no Baileys é `loggedOut` — encerrada do lado do WhatsApp, não queda de
+rede (que dá 428/515) nem outro aparelho assumindo (440). Lista com um quinto
+de inválidos é o sinal mais alto que um antifraude procura: quem conhece os
+próprios contatos não erra 20 em 86.
+
+Agora, **depois de montar a fila e antes de qualquer disparo**, a criação da
+campanha pergunta à Evolution quais daqueles números existem
+(`/chat/whatsappNumbers`, em lotes de 50). Quem não existe sai pelo caminho de
+sempre — `chat.opt_out` com motivo `no_whatsapp` —, o mesmo por onde sairia ao
+falhar no disparo. A diferença é sair antes, sem gastar a reputação do número
+para descobrir.
+
+`audience.whatsapp_em` guarda quando cada número foi conferido. Vale **30
+dias**: número não costuma deixar de existir, mas passa a existir — quem
+instalou o WhatsApp semana passada estava fora e agora está. Sem isso, ou toda
+campanha varreria a base inteira, ou quem entrou depois nunca voltaria.
+
+**Falhar a conferência não derruba a campanha.** Sem ela o mundo volta a ser o
+de antes, que é o mundo que funcionava; recusar a campanha porque a Evolution
+demorou seria trocar um risco por uma parede. A tela diz quando não deu para
+conferir, e diz quantos saíram quando deu.
+
 ## O log: quem, e por quê
 
 Os números embaixo de cada campanha são clicáveis. Cada um abre a lista de quem
@@ -327,9 +360,6 @@ mesmo vídeo uma vez por pessoa. Teto de 16 MB, que é o que o WhatsApp aceita.
 
 ## O que ainda não existe
 
-- **Nenhuma verificação de que o número tem WhatsApp** antes de enfileirar.
-  A Evolution expõe `/chat/whatsappNumbers/{instance}`; passar a base por ali
-  antes do disparo evitaria falhas em série, que é o pior sinal possível.
 - **Retomada de campanha entre dias** funciona (o teto é por dia), mas nada
   avisa quando uma campanha fica dias parada.
 - **Nada impede** criar dez campanhas para a mesma base no mesmo dia. O
