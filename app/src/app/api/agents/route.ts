@@ -18,6 +18,13 @@ const createSchema = z.object({
   email: z.string().email("E-mail inválido"),
   fullName: z.string().trim().min(1, "Informe o nome").max(120),
   role: z.enum(ROLES as [AgentRole, ...AgentRole[]]),
+  /**
+   * Número para onde a senha vai ser enviada daqui em diante.
+   *
+   * Opcional, mas pedido já no cadastro: sem ele, o botão "Nova senha" da
+   * pessoa recém-criada recusa até alguém voltar e preencher.
+   */
+  whatsapp: z.string().trim().regex(/^[1-9][0-9]{7,14}$/).optional(),
   /** Opcional: sem isso geramos uma e devolvemos uma única vez. */
   password: z.string().min(8, "A senha precisa de ao menos 8 caracteres").max(72).optional(),
 });
@@ -47,7 +54,7 @@ export async function GET() {
 
   const { data: agents, error } = await db
     .from("agents")
-    .select("id, email, full_name, role, is_active, created_at")
+    .select("id, email, full_name, whatsapp, role, is_active, created_at")
     .order("created_at", { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -127,13 +134,14 @@ export async function POST(request: Request) {
         id: userId,
         email,
         full_name: fullName,
+        ...(parsed.data.whatsapp && { whatsapp: parsed.data.whatsapp }),
         role,
         is_active: true,
         company_id: agent.company_id,
       },
       { onConflict: "id" }
     )
-    .select("id, email, full_name, role, is_active, created_at")
+    .select("id, email, full_name, whatsapp, role, is_active, created_at")
     .single();
 
   if (upsertError) {

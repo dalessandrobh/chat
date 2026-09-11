@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { normalizarNumero } from "@/lib/planilha";
 import {
   ROLES,
   ROLE_DESCRIPTION,
@@ -13,6 +14,8 @@ interface Agent {
   id: string;
   email: string | null;
   full_name: string | null;
+  /** Para onde vai a senha nova. Endereço de entrega, não credencial. */
+  whatsapp: string | null;
   role: AgentRole;
   is_active: boolean;
   created_at: string;
@@ -20,6 +23,18 @@ interface Agent {
 }
 
 type Aviso = { kind: "ok" | "erro"; text: string } | null;
+
+/**
+ * O número em forma de gente: (31) 99654-6236.
+ *
+ * Só para ler. O que vai para o banco é o E.164 sem símbolos, normalizado
+ * pelo mesmo `normalizarNumero` que a base de envio usa — dois lugares que
+ * pedem telefone e o interpretam diferente seriam dois bugs esperando.
+ */
+function formatarNumero(wa: string): string {
+  const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(wa);
+  return m ? `(${m[1]}) ${m[2]}-${m[3]}` : wa;
+}
 
 const ROLE_BADGE: Record<AgentRole, string> = {
   admin: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300",
@@ -32,7 +47,13 @@ export function UsuariosClient({ currentUserId }: { currentUserId: string }) {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [aviso, setAviso] = useState<Aviso>(null);
-  /** Senha recém-gerada: aparece uma vez e não volta. */
+  /**
+   * Senha recém-gerada que o WhatsApp não levou.
+   *
+   * O caminho normal é a senha ir para o número da pessoa e nunca aparecer
+   * aqui. Isto é a rede de segurança: falhando o envio, a senha já mudou, e
+   * esconder o valor deixaria a pessoa trancada do lado de fora.
+   */
   const [senhaGerada, setSenhaGerada] = useState<{ email: string; password: string } | null>(null);
 
   const refresh = useCallback(async () => {
@@ -86,11 +107,25 @@ export function UsuariosClient({ currentUserId }: { currentUserId: string }) {
   }
 
   async function resetPassword(agent: Agent) {
+    // O número aparece na pergunta de propósito: quem confirma precisa ver
+    // para onde a senha vai antes de dizer sim, não depois.
+    if (!agent.whatsapp) {
+      setAviso({
+        kind: "erro",
+        text:
+          `${agent.full_name ?? "Esta pessoa"} não tem WhatsApp cadastrado. ` +
+          `Preencha o número na linha dela — é para lá que a senha vai.`,
+      });
+      return;
+    }
+
     if (
       !confirm(
-        `Gerar uma senha nova para ${agent.email}?\n\n` +
-          `Atenção: a senha vale para todo o Supabase, então muda também no ` +
-          `dsearch se a pessoa usar os dois.`
+        `Trocar a senha de ${agent.full_name ?? agent.email}?\n\n` +
+          `A senha atual deixa de funcionar na hora, e a nova vai por WhatsApp ` +
+          `para ${formatarNumero(agent.whatsapp)}.\n\n` +
+          `Ela vale para todo o Supabase, então muda também no dsearch se a ` +
+          `pessoa usar os dois.`
       )
     ) {
       return;
@@ -102,6 +137,21 @@ export function UsuariosClient({ currentUserId }: { currentUserId: string }) {
       setAviso({ kind: "erro", text: json.error });
       return;
     }
+
+    if (json.enviada) {
+      setAviso({
+        kind: "ok",
+        text: `Senha nova enviada para ${formatarNumero(agent.whatsapp)} pelo ${json.canal}.`,
+      });
+      return;
+    }
+
+    // Trocou mas não enviou: a senha aparece aqui, que é o comportamento
+    // antigo, agora reservado para o caso em que o envio falhou.
+    setAviso({
+      kind: "erro",
+      text: `A senha mudou, mas o WhatsApp não saiu: ${json.motivo}. Passe a senha abaixo à pessoa.`,
+    });
     setSenhaGerada({ email: agent.email ?? "", password: json.password });
   }
 
@@ -271,6 +321,11 @@ function AgentRow({
           : "nunca entrou"}
       </p>
 
+      <CampoWhatsApp
+        valor={agent.whatsapp}
+        onSalvar={(numero) => onPatch(agent.id, { whatsapp: numero })}
+      />
+
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <select
           value={agent.role}
@@ -317,6 +372,78 @@ function AgentRow({
 
 // -----------------------------------------------------------------------------
 
+/**
+ * O número para onde a senha vai.
+ *
+ * Aceita o que a pessoa digita — parênteses, traço, com ou sem o país — e
+ * grava em E.164, pelo mesmo `normalizarNumero` da base de envio. Mostra a
+ * forma normalizada embaixo enquanto se digita: o campo que aceita tudo e
+ * grava outra coisa precisa dizer o que vai gravar.
+ */
+function CampoWhatsApp({
+  valor,
+  onSalvar,
+}: {
+  valor: string | null;
+  onSalvar: (numero: string) => Promise<boolean>;
+}) {
+  const [texto, setTexto] = useState(valor ?? "");
+  const [busy, setBusy] = useState(false);
+
+  const vazio = texto.trim() === "";
+  const lido = vazio ? null : normalizarNumero(texto);
+  const mudou = (lido?.ok ? lido.waId : "") !== (valor ?? "");
+  const podeSalvar = !busy && mudou && (vazio || lido?.ok);
+
+  async function salvar() {
+    if (!podeSalvar) return;
+    setBusy(true);
+    await onSalvar(vazio ? "" : (lido as { waId: string }).waId);
+    setBusy(false);
+  }
+
+  return (
+    <div className="mt-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs" style={{ color: "var(--muted)" }}>WhatsApp:</span>
+        <input
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") void salvar(); }}
+          placeholder="(31) 99999-8888"
+          className="w-44 rounded-lg border px-2 py-1 text-xs"
+          style={{ background: "var(--bg)", borderColor: "var(--border)" }}
+        />
+        {mudou && (
+          <button
+            onClick={() => void salvar()}
+            disabled={!podeSalvar}
+            className="rounded-lg border px-2 py-1 text-xs disabled:opacity-40"
+            style={{ borderColor: "var(--border)" }}
+          >
+            {busy ? "…" : "Salvar"}
+          </button>
+        )}
+        {!valor && (
+          <span className="text-xs" style={{ color: "var(--muted)" }}>
+            sem número — a senha nova não tem para onde ir
+          </span>
+        )}
+      </div>
+
+      {lido && !lido.ok && (
+        <p className="mt-1 text-xs text-red-600 dark:text-red-400">{lido.motivo}</p>
+      )}
+      {lido?.ok && mudou && (
+        <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+          Vai gravar como <span className="font-mono">{lido.waId}</span>
+          {lido.aviso ? ` — ${lido.aviso}` : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function CreateForm({
   onDone,
 }: {
@@ -327,8 +454,11 @@ function CreateForm({
 }) {
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [role, setRole] = useState<AgentRole>("agent");
   const [busy, setBusy] = useState(false);
+
+  const numero = whatsapp.trim() === "" ? null : normalizarNumero(whatsapp);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -337,7 +467,12 @@ function CreateForm({
       const response = await fetch("/api/agents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, fullName, role }),
+        body: JSON.stringify({
+          email,
+          fullName,
+          role,
+          ...(numero?.ok && { whatsapp: numero.waId }),
+        }),
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error);
@@ -364,7 +499,7 @@ function CreateForm({
       className="mt-4 rounded-lg border p-4"
       style={{ background: "var(--panel)", borderColor: "var(--border)" }}
     >
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <label className="text-sm">
           Nome
           <input
@@ -389,6 +524,17 @@ function CreateForm({
         </label>
 
         <label className="text-sm">
+          WhatsApp
+          <input
+            value={whatsapp}
+            onChange={(e) => setWhatsapp(e.target.value)}
+            placeholder="(31) 99999-8888"
+            className="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none"
+            style={{ background: "var(--bg)", borderColor: "var(--border)" }}
+          />
+        </label>
+
+        <label className="text-sm">
           Papel
           <select
             value={role}
@@ -406,7 +552,9 @@ function CreateForm({
       </div>
 
       <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>
-        {ROLE_DESCRIPTION[role]} A senha é gerada agora e aparece uma única vez.
+        {ROLE_DESCRIPTION[role]} A senha é gerada agora e aparece uma única
+        vez. O WhatsApp é opcional aqui, mas é para onde vão as próximas
+        senhas — sem ele, o botão “Nova senha” não tem para onde enviar.
       </p>
 
       <button
