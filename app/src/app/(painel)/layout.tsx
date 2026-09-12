@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { canManageKnowledge, canManageTemplates, canManageUsers, roleLabel } from "@/lib/roles";
 import { SairButton } from "@/components/auth/SairButton";
 import { ConversasLink } from "@/components/painel/ConversasLink";
+import { MenuPainel, type ItemDeMenu } from "@/components/painel/MenuPainel";
 import { PresencaProvider } from "@/components/painel/Presenca";
 
 export default async function PainelLayout({
@@ -51,6 +52,29 @@ export default async function PainelLayout({
   // não saber de quem é o inbox é como se responde pela empresa errada.
   const { data: empresa } = await supabase.from("companies").select("name").maybeSingle();
 
+  const itens: ItemDeMenu[] = [
+    { href: "/templates", rotulo: "Templates" },
+    ...(canManageKnowledge(agent.role)
+      ? [
+          { href: "/base", rotulo: "Base" },
+          { href: "/agente", rotulo: "Agente" },
+          { href: "/ajustes", rotulo: "Ajustes" },
+        ]
+      : []),
+    ...(canManageTemplates(agent.role)
+      ? [
+          { href: "/contatos", rotulo: "Contatos" },
+          { href: "/campanhas", rotulo: "Campanhas" },
+        ]
+      : []),
+    { href: "/canais", rotulo: "Canais" },
+    // Sem trava de papel: quem atende é quem topa com o número que não devia
+    // estar escrevendo.
+    { href: "/bloqueios", rotulo: "Bloqueios" },
+    ...(canManageUsers(agent.role) ? [{ href: "/usuarios", rotulo: "Usuários" }] : []),
+    ...(ehDonoPlataforma ? [{ href: "/plataforma", rotulo: "Plataforma" }] : []),
+  ];
+
   return (
     // A presença fica no layout, e não na tela de conversas: quem está com o
     // painel aberto continua disponível mesmo olhando um template.
@@ -59,9 +83,12 @@ export default async function PainelLayout({
       nome={agent.full_name ?? agent.email ?? null}
       empresaId={agent.company_id}
     >
-    <div className="flex h-screen flex-col">
+    {/* `h-dvh` e não `h-screen`: no celular o `100vh` conta a barra do
+        navegador como se ela não existisse, e a caixa de envio fica embaixo
+        dela — a tela em que se digita, fora da tela. */}
+    <div className="flex h-dvh flex-col">
       <header
-        className="flex shrink-0 items-center gap-6 border-b px-5 py-3"
+        className="relative flex shrink-0 items-center gap-3 border-b px-3 py-2.5 md:gap-6 md:px-5 md:py-3"
         style={{ borderColor: "var(--border)", background: "var(--panel)" }}
       >
         <Link href="/empresa" className="flex min-w-0 items-baseline gap-2">
@@ -77,56 +104,17 @@ export default async function PainelLayout({
           )}
         </Link>
 
-        <nav className="flex gap-4 text-sm">
-          <ConversasLink />
-          <Link href="/templates" className="hover:underline">
-            Templates
-          </Link>
-          {canManageKnowledge(agent.role) && (
-            <>
-              <Link href="/base" className="hover:underline">
-                Base
-              </Link>
-              <Link href="/agente" className="hover:underline">
-                Agente
-              </Link>
-              <Link href="/ajustes" className="hover:underline">
-                Ajustes
-              </Link>
-            </>
-          )}
-          {canManageTemplates(agent.role) && (
-            <>
-              <Link href="/contatos" className="hover:underline">
-                Contatos
-              </Link>
-              <Link href="/campanhas" className="hover:underline">
-                Campanhas
-              </Link>
-            </>
-          )}
-          <Link href="/canais" className="hover:underline">
-            Canais
-          </Link>
-          {/* Sem trava de papel: quem atende é quem topa com o número que não
-              devia estar escrevendo. */}
-          <Link href="/bloqueios" className="hover:underline">
-            Bloqueios
-          </Link>
-          {canManageUsers(agent.role) && (
-            <Link href="/usuarios" className="hover:underline">
-              Usuários
-            </Link>
-          )}
-        </nav>
+        <ConversasLink />
+
+        <MenuPainel
+          itens={itens}
+          identificacao={`${agent.full_name ?? agent.email} · ${roleLabel(agent.role)}`}
+        />
 
         <span className="ml-auto flex items-center gap-3 text-xs" style={{ color: "var(--muted)" }}>
-          {ehDonoPlataforma && (
-            <Link href="/plataforma" className="hover:underline">
-              Plataforma
-            </Link>
-          )}
-          <span>
+          {/* No celular quem está logado aparece no pé da gaveta: o cabeçalho
+              não tem largura para o nome e o botão de sair ao mesmo tempo. */}
+          <span className="hidden md:inline">
             {agent.full_name ?? agent.email} · {roleLabel(agent.role)}
           </span>
           <SairButton />

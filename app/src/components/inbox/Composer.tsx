@@ -80,7 +80,9 @@ export function Composer({
 
   return (
     <div
-      className="border-t p-3"
+      // A faixa do gesto de voltar do iPhone fica por cima do rodapé da
+      // página: sem a folga do `safe-area` o botão de enviar cai debaixo dela.
+      className="border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       style={{ borderColor: "var(--border)", background: "var(--panel)" }}
     >
       {isBot && (
@@ -154,16 +156,27 @@ export function Composer({
                   ? "Janela fechada — envie um template"
                   : "Escreva uma mensagem…"
           }
-          className="max-h-32 flex-1 resize-none rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-60"
+          // 16px no celular: com fonte menor o iOS dá zoom ao focar e a
+          // conversa some da tela na hora de escrever.
+          className="max-h-32 flex-1 resize-none rounded-lg border px-3 py-2 text-base outline-none disabled:opacity-60 md:text-sm"
           style={{ background: "var(--bg)", borderColor: "var(--border)" }}
         />
 
         <button
           onClick={sendText}
           disabled={blocked || sending || !text.trim()}
-          className="rounded-lg bg-wa-green px-4 py-2 text-sm font-medium text-white transition hover:bg-wa-teal disabled:opacity-40"
+          className="rounded-lg bg-wa-green px-3 py-2 text-sm font-medium text-white transition hover:bg-wa-teal disabled:opacity-40 md:px-4"
         >
-          {sending ? "…" : "Enviar"}
+          {/* No celular o rótulo vira ícone: os 70px de "Enviar" saem da
+              largura de quem está escrevendo. */}
+          {sending ? (
+            "…"
+          ) : (
+            <>
+              <span className="md:hidden">➤</span>
+              <span className="hidden md:inline">Enviar</span>
+            </>
+          )}
         </button>
       </div>
 

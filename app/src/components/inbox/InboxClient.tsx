@@ -26,9 +26,13 @@ export function InboxClient({
   nomeDoBot: string;
 }) {
   const [rows, setRows] = useState<InboxRow[]>(initialRows);
-  const [selectedId, setSelectedId] = useState<string | null>(
-    initialRows[0]?.conversation_id ?? null
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /**
+   * No celular as duas colunas não cabem lado a lado: ou a fila, ou a
+   * conversa. Este é o que está na frente. No tablet e no PC não vale nada —
+   * as duas colunas aparecem juntas de qualquer forma.
+   */
+  const [threadNaFrente, setThreadNaFrente] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [filter, setFilter] = useState("");
   /** Encerradas ficam de fora por padrão: a lista é a fila de trabalho, não o arquivo. */
@@ -44,6 +48,20 @@ export function InboxClient({
   );
 
   const supabase = supabaseBrowser();
+
+  /**
+   * Abrir já na primeira conversa, mas só onde as duas colunas cabem juntas.
+   *
+   * No celular isso esconderia a fila atrás de uma conversa que ninguém pediu
+   * para ver — e, pior, marcaria essa conversa como lida. Não dá para decidir
+   * isso na renderização: o servidor não sabe a largura da tela, e chutar aqui
+   * é divergir do HTML que ele mandou.
+   */
+  useEffect(() => {
+    if (window.matchMedia("(min-width: 768px)").matches) {
+      setSelectedId((atual) => atual ?? initialRows[0]?.conversation_id ?? null);
+    }
+  }, [initialRows]);
 
   // --- Carregamento -----------------------------------------------------
 
@@ -232,6 +250,13 @@ export function InboxClient({
 
   const selected = rows.find((r) => r.conversation_id === selectedId) ?? null;
 
+  /**
+   * Só vale no celular. O `selected` entra na conta porque a conversa pode sair
+   * da lista embaixo de quem a está lendo — bloquear o número faz isso — e aí
+   * a tela ficaria numa coluna vazia sem botão de voltar.
+   */
+  const threadNaTela = threadNaFrente && !!selected;
+
   const refresh = useCallback(() => {
     void loadRows();
     if (selectedId) void loadMessages(selectedId);
@@ -242,9 +267,13 @@ export function InboxClient({
   return (
     <div className="flex h-full min-h-0">
       <ConversationList
+        oculta={threadNaTela}
         rows={filtered}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        onSelect={(id) => {
+          setSelectedId(id);
+          setThreadNaFrente(true);
+        }}
         filter={filter}
         onFilterChange={setFilter}
         encerradas={encerradas}
@@ -255,7 +284,9 @@ export function InboxClient({
         contagens={contagens}
       />
 
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section
+        className={`min-w-0 flex-1 flex-col md:flex ${threadNaTela ? "flex" : "hidden"}`}
+      >
         {selected ? (
           <>
             <HandoffBar
@@ -263,6 +294,13 @@ export function InboxClient({
               agenteId={agenteId}
               agentes={agentes}
               onChanged={refresh}
+              // Soltar a conversa junto com o painel: o Realtime marca como
+              // lida toda mensagem que chega na conversa aberta, e depois de
+              // voltar para a fila ela não está aberta na frente de ninguém.
+              onVoltar={() => {
+                setThreadNaFrente(false);
+                setSelectedId(null);
+              }}
             />
             {/* Entre a barra e a conversa, recolhida: quem abre a conversa
                 quer ler a conversa. Mas antes de responder a alguém que já

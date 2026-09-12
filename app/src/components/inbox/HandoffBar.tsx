@@ -36,11 +36,14 @@ export function HandoffBar({
   agenteId,
   agentes,
   onChanged,
+  onVoltar,
 }: {
   row: InboxRow;
   agenteId: string | null;
   agentes: AgenteResumo[];
   onChanged: () => void;
+  /** Volta para a fila no celular, onde a conversa ocupa a tela inteira. */
+  onVoltar: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +56,12 @@ export function HandoffBar({
   /** Bloquear some com a conversa da tela: vale confirmar antes. */
   const [confirmandoBloqueio, setConfirmandoBloqueio] = useState(false);
   const [motivoBloqueio, setMotivoBloqueio] = useState("");
+  /**
+   * No celular a barra não tem largura para oito controles: fica o botão que
+   * decide quem responde, e o resto sai atrás do "⋯". No tablet e no PC tudo
+   * aparece de uma vez, como sempre.
+   */
+  const [maisAberto, setMaisAberto] = useState(false);
 
   const online = usePresenca();
 
@@ -168,14 +177,25 @@ export function HandoffBar({
     }
   }
 
+  /** O que só aparece no celular depois do "⋯". */
+  const secundario = maisAberto ? "" : "hidden md:block";
+
   return (
     <div
-      className="flex flex-col gap-2 border-b px-4 py-2.5"
+      className="flex flex-col gap-2 border-b px-3 py-2.5 md:px-4"
       style={{ borderColor: "var(--border)", background: "var(--panel)" }}
     >
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex flex-col">
-          <span className="text-sm font-medium">{row.contact_name}</span>
+      <div className="flex flex-wrap items-center gap-2 md:gap-3">
+        <button
+          onClick={onVoltar}
+          aria-label="Voltar para a lista de conversas"
+          className="-ml-1 rounded-lg px-2 py-1 text-lg leading-none transition hover:bg-black/[0.04] md:hidden dark:hover:bg-white/[0.06]"
+        >
+          ←
+        </button>
+
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-medium">{row.contact_name}</span>
           <span className="text-[11px]" style={{ color: "var(--muted)" }}>
             +{row.wa_id}
             {row.within_window ? (
@@ -190,8 +210,18 @@ export function HandoffBar({
           </span>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {error && <span className="text-xs text-red-600">{error}</span>}
+
+          <button
+            onClick={() => setMaisAberto((v) => !v)}
+            aria-expanded={maisAberto}
+            aria-label="Mais ações desta conversa"
+            className="rounded-lg border px-2 py-1.5 text-xs leading-none md:hidden"
+            style={{ borderColor: "var(--border)" }}
+          >
+            ⋯
+          </button>
 
           {deOutro && (
             <span className="text-[11px]" style={{ color: "var(--muted)" }}>
@@ -212,7 +242,7 @@ export function HandoffBar({
               }}
               disabled={busy}
               title="Direcionar a um atendente. A conversa continua na fila."
-              className="max-w-40 rounded-lg border px-2 py-1.5 text-xs"
+              className={`max-w-40 rounded-lg border px-2 py-1.5 text-xs ${secundario}`}
               style={{ background: "var(--bg)", borderColor: "var(--border)" }}
             >
               <option value="">sem direcionamento</option>
@@ -243,7 +273,7 @@ export function HandoffBar({
             <select
               value={resumeMinutes}
               onChange={(e) => setResumeMinutes(e.target.value)}
-              className="rounded-lg border px-2 py-1.5 text-xs"
+              className={`rounded-lg border px-2 py-1.5 text-xs ${secundario}`}
               style={{ background: "var(--bg)", borderColor: "var(--border)" }}
               title="Devolver ao bot automaticamente depois de…"
             >
@@ -261,7 +291,7 @@ export function HandoffBar({
               onClick={() => call("release")}
               disabled={busy}
               title="Solta a conversa de volta para a fila, sem avisar o cliente"
-              className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:bg-black/[0.03] disabled:opacity-60 dark:hover:bg-white/[0.05]"
+              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:bg-black/[0.03] disabled:opacity-60 dark:hover:bg-white/[0.05] ${secundario}`}
               style={{ borderColor: "var(--border)" }}
             >
               Liberar
@@ -282,7 +312,7 @@ export function HandoffBar({
             onClick={() => setConfirmandoBloqueio((v) => !v)}
             disabled={busy}
             title="Bloquear este número: some da lista e o bot não responde mais"
-            className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:bg-black/[0.03] disabled:opacity-60 dark:hover:bg-white/[0.05]"
+            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:bg-black/[0.03] disabled:opacity-60 dark:hover:bg-white/[0.05] ${secundario}`}
             style={{ borderColor: "var(--border)" }}
           >
             Bloquear
@@ -299,7 +329,7 @@ export function HandoffBar({
                 ? "Traz a conversa de volta para a lista"
                 : "Arquiva a conversa. Não avisa o cliente, e ela volta sozinha se ele escrever."
             }
-            className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:bg-black/[0.03] disabled:opacity-60 dark:hover:bg-white/[0.05]"
+            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:bg-black/[0.03] disabled:opacity-60 dark:hover:bg-white/[0.05] ${secundario}`}
             style={{ borderColor: "var(--border)" }}
           >
             {encerrada ? "Reabrir" : "Encerrar"}
@@ -317,7 +347,7 @@ export function HandoffBar({
             value={motivoBloqueio}
             onChange={(e) => setMotivoBloqueio(e.target.value)}
             placeholder="motivo (opcional)"
-            className="min-w-40 flex-1 rounded-lg border px-2 py-1 text-xs outline-none"
+            className="min-w-40 flex-1 rounded-lg border px-2 py-1 text-base outline-none md:text-xs"
             style={{ background: "var(--bg)", borderColor: "var(--border)" }}
           />
           <button
@@ -369,7 +399,7 @@ export function HandoffBar({
             value={motivo}
             onChange={(e) => setMotivo(e.target.value)}
             placeholder="motivo, para ficar no histórico"
-            className="min-w-48 flex-1 rounded-lg border px-2 py-1 text-xs outline-none"
+            className="min-w-48 flex-1 rounded-lg border px-2 py-1 text-base outline-none md:text-xs"
             style={{ background: "var(--bg)", borderColor: "var(--border)" }}
           />
           <button

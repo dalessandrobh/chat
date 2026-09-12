@@ -56,6 +56,7 @@ function ModeBadge({ row }: { row: InboxRow }) {
 }
 
 export function ConversationList({
+  oculta,
   rows,
   selectedId,
   onSelect,
@@ -68,6 +69,8 @@ export function ConversationList({
   onAba,
   contagens,
 }: {
+  /** Só no celular: a conversa está na frente e a fila saiu da tela. */
+  oculta: boolean;
   rows: InboxRow[];
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -87,7 +90,11 @@ export function ConversationList({
   ];
   return (
     <aside
-      className="flex w-80 shrink-0 flex-col border-r"
+      // No celular a fila ocupa a tela inteira, e sai dela quando uma conversa
+      // é aberta. No tablet cabe ao lado da conversa, mais estreita.
+      className={`w-full shrink-0 flex-col border-r md:flex md:w-64 lg:w-80 ${
+        oculta ? "hidden" : "flex"
+      }`}
       style={{ borderColor: "var(--border)", background: "var(--panel)" }}
     >
       <div className="border-b p-3" style={{ borderColor: "var(--border)" }}>
@@ -95,7 +102,9 @@ export function ConversationList({
           value={filter}
           onChange={(e) => onFilterChange(e.target.value)}
           placeholder="Buscar por nome ou número…"
-          className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+          // 16px no celular: com fonte menor o iOS dá zoom ao focar o campo e
+          // a tela inteira sai de lugar.
+          className="w-full rounded-lg border px-3 py-2 text-base outline-none md:text-sm"
           style={{ background: "var(--bg)", borderColor: "var(--border)" }}
         />
 
@@ -104,7 +113,7 @@ export function ConversationList({
             <button
               key={t.id}
               onClick={() => onAba(t.id)}
-              className={`rounded-lg px-2 py-1 text-xs transition ${
+              className={`rounded-lg px-2.5 py-2 text-xs transition md:py-1 ${
                 aba === t.id
                   ? "bg-black/[0.06] font-medium dark:bg-white/[0.10]"
                   : "opacity-70 hover:opacity-100"

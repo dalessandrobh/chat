@@ -162,7 +162,7 @@ function Bubble({
   return (
     <div className={`flex ${incoming ? "justify-start" : "justify-end"}`}>
       <div
-        className={`max-w-[70%] rounded-xl px-3 py-2 shadow-sm ${
+        className={`max-w-[85%] rounded-xl px-3 py-2 shadow-sm md:max-w-[75%] lg:max-w-[70%] ${
           incoming
             ? "rounded-tl-sm bg-white dark:bg-[#202c33]"
             : failed
@@ -224,11 +224,14 @@ export function MessageThread({
 
   // Rola para o fim quando chega mensagem nova.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    // `block: "end"` prende a rolagem ao fim da lista de mensagens. Sem isso,
+    // com o teclado do celular aberto, o navegador escolhe sozinho o que
+    // rolar e leva a barra de controle para fora da tela.
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length]);
 
   return (
-    <div className="thread-bg flex-1 space-y-2 overflow-y-auto p-4">
+    <div className="thread-bg flex-1 space-y-2 overflow-y-auto p-3 md:p-4">
       {messages.map((message) => (
         <Bubble
           key={message.id}

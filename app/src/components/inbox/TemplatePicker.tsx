@@ -38,11 +38,13 @@ export function TemplatePicker({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      // No celular encosta embaixo, no alcance do polegar; no tablet e no PC
+      // continua centralizado.
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 md:items-center md:p-4"
       onClick={onCancel}
     >
       <div
-        className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-xl border p-5 shadow-xl"
+        className="max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-t-xl border p-4 shadow-xl md:max-h-[80dvh] md:rounded-xl md:p-5"
         style={{ background: "var(--panel)", borderColor: "var(--border)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -95,7 +97,7 @@ export function TemplatePicker({
                     next[index] = e.target.value;
                     setVariables(next);
                   }}
-                  className="mt-0.5 w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                  className="mt-0.5 w-full rounded-lg border px-3 py-2 text-base outline-none md:text-sm"
                   style={{ background: "var(--bg)", borderColor: "var(--border)" }}
                 />
               </label>
