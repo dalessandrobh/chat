@@ -55,3 +55,11 @@ For multi-step tasks, state a brief plan:
 1. [Step] → verify: [check]
 2. [Step] → verify: [check]
 3. [Step] → verify: [check]
+
+5. Respostas Curtas
+
+Só o estritamente necessário. O trabalho está no código, não na resposta.
+
+Sem blocos de código na resposta: cite arquivo:linha e descreva em texto.
+Sem tabelas, dumps de SQL, logs colados ou recapitulação do que já foi feito.
+Resultado em uma ou duas frases; detalhe só se for perguntado.
