@@ -189,6 +189,20 @@ de antes, que é o mundo que funcionava; recusar a campanha porque a Evolution
 demorou seria trocar um risco por uma parede. A tela diz quando não deu para
 conferir, e diz quantos saíram quando deu.
 
+### E de novo, na hora do envio
+
+Conferir na criação não alcança a fila que já existia. Em **14/09/2026** a
+campanha de 10/09 foi retomada e, no décimo envio, saiu de novo para um número
+que não existe: a fila dela é anterior à conferência. O mesmo buraco vale para
+campanha pausada que volta semanas depois e para a conferência que falhou na
+criação — nos três casos a campanha dispara com a lista por conferir.
+
+Por isso a trava também fica no último ponto por onde todo envio passa. Antes
+de virar mensagem, `tick()` confere aquele número; quem não existe vira
+`skipped` com o motivo na linha, e nenhuma mensagem sai. Como a conferência
+pula quem foi visto nos últimos 30 dias, o normal é isso não custar chamada
+nenhuma — a conta só aparece na primeira campanha de uma lista nova.
+
 ## O log: quem, e por quê
 
 Os números embaixo de cada campanha são clicáveis. Cada um abre a lista de quem

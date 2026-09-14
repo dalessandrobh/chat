@@ -11,6 +11,7 @@
  */
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { conferirNumeros } from "@/lib/conferir-numeros";
 import { sendMediaMessage, sendTextMessage } from "@/lib/messages";
 import type { MediaKind } from "@/lib/meta/client";
 
@@ -132,6 +133,37 @@ async function enviarUm(claim: Claim): Promise<boolean> {
 }
 
 /**
+ * Este número existe no WhatsApp?
+ *
+ * A conferência em lote acontece quando a campanha é criada, mas a fila vive
+ * mais que esse instante: campanha pausada volta dias depois, campanha criada
+ * antes desta trava existir ainda tem fila, e conferência que falhou na
+ * criação deixa a lista inteira por conferir. Em 14/09/2026 a campanha de
+ * 10/09 foi retomada e, no décimo envio, saiu para um número que não existe —
+ * exatamente o que a conferência da criação não tinha como alcançar.
+ *
+ * Aqui é o último ponto por onde todo envio passa, e por isso é onde a trava
+ * fecha. `conferirNumeros` já sabe pular quem foi conferido há pouco, então o
+ * normal é isto não custar chamada nenhuma.
+ *
+ * Falhar a conferência não segura o envio: sem ela o mundo volta a ser o de
+ * antes, que é o mundo que funcionava.
+ */
+async function naoExisteNoWhatsapp(claim: Claim): Promise<boolean> {
+  const conferencia = await conferirNumeros({
+    companyId: claim.company_id,
+    channelId: claim.channel_id,
+    waIds: [claim.wa_id],
+  });
+
+  if (conferencia.erro) {
+    console.error(`[campanha] não consegui conferir ${claim.wa_id}: ${conferencia.erro}`);
+  }
+
+  return conferencia.semWhatsapp > 0;
+}
+
+/**
  * Um passo do relógio. Envia no máximo uma mensagem — o intervalo entre elas é
  * a proteção, então acelerar aqui anularia o resto.
  */
@@ -141,6 +173,19 @@ export async function tick(): Promise<TickResult> {
 
   const claim = (data as Claim[] | null)?.[0];
   if (!claim) return { enviados: 0, falhas: 0, motivo: "nada a enviar agora" };
+
+  // Número que não existe sai antes de virar mensagem. `claim_next_send` já
+  // marcou a linha como enviada — é ela que precisa voltar atrás, porque o
+  // `opt_out` de dentro da conferência só alcança quem ainda está `pending`.
+  // Sem limpar `sent_at`, o que não saiu contaria como saída no cartão da
+  // campanha e no intervalo entre envios.
+  if (await naoExisteNoWhatsapp(claim)) {
+    await supabaseAdmin()
+      .from("campaign_recipients")
+      .update({ status: "skipped", sent_at: null, error: "Este número não tem WhatsApp." })
+      .eq("id", claim.recipient_id);
+    return { enviados: 0, falhas: 0, motivo: "número sem WhatsApp, fora da fila" };
+  }
 
   try {
     const ok = await enviarUm(claim);
