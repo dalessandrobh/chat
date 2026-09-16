@@ -18,11 +18,14 @@ interface Campanha {
   lidas: number;
   falharam: number;
   ignorados: number;
+  /** Por que ela parou sozinha. Nulo quando quem pausou foi gente. */
+  pausa_motivo: string | null;
 }
 
 interface Detalhe {
   media_kind: string;
   body: string | null;
+  variacoes: string[] | null;
   media_url: string | null;
   media_filename: string | null;
   media_mime: string | null;
@@ -327,6 +330,14 @@ export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
                   )}
                 </div>
               </div>
+
+              {/* A campanha que parou sozinha explica por quê, aqui, e não num
+                  log: quem abre esta tela está procurando exatamente isso. */}
+              {c.pausa_motivo && c.status === "paused" && (
+                <p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                  {c.pausa_motivo}
+                </p>
+              )}
 
               {aberta === c.campaign_id && (
                 <Mensagem
@@ -725,6 +736,7 @@ export interface Modelo {
   channel_id: string;
   media_kind: MediaKind;
   body: string | null;
+  variacoes: string[] | null;
   media_url: string | null;
   media_filename: string | null;
   media_mime: string | null;
@@ -772,6 +784,15 @@ function Formulario({
   const [nome, setNome] = useState("");
   const [tipo, setTipo] = useState<MediaKind>(modelo?.media_kind ?? "text");
   const [texto, setTexto] = useState(modelo?.body ?? "");
+  /**
+   * Outras redações da mesma mensagem. Cada envio sorteia uma.
+   *
+   * Não é "mais de uma campanha": é a mesma oferta escrita de outro jeito.
+   * Mensagem idêntica byte a byte para a lista inteira é o que os filtros da
+   * Meta leem primeiro — foi o que saiu nas duas campanhas que terminaram com
+   * o número removido do WhatsApp.
+   */
+  const [variacoes, setVariacoes] = useState<string[]>(modelo?.variacoes ?? []);
   const [anexo, setAnexo] = useState<Anexo | null>(
     modelo?.media_url
       ? {
@@ -881,6 +902,10 @@ function Formulario({
       return;
     }
 
+    // Variação em branco é campo que alguém abriu e não usou: some, em vez de
+    // virar um sorteio que manda mensagem vazia.
+    const variacoesLimpas = variacoes.map((v) => v.trim()).filter(Boolean);
+
     setSalvando(true);
     const r = await fetch("/api/campaigns", {
       method: "POST",
@@ -890,6 +915,7 @@ function Formulario({
         channelId,
         mediaKind: tipo,
         body: tipo === "audio" ? undefined : texto.trim() || undefined,
+        variacoes: variacoesLimpas.length ? variacoesLimpas : undefined,
         mediaUrl: anexo?.url,
         mediaFilename: anexo?.filename,
         mediaMime: anexo?.mime,
@@ -1041,6 +1067,43 @@ function Formulario({
               <code>{"{nome}"}</code> vira o primeiro nome do contato. Vale a pena
               usar: mensagem idêntica para centenas de números é o que mais
               chama atenção dos filtros da Meta.
+            </p>
+
+            {variacoes.map((v, i) => (
+              <div key={i} className="mt-3">
+                <label className={rotulo}>Variação {i + 1}</label>
+                <textarea
+                  value={v}
+                  onChange={(e) =>
+                    setVariacoes(variacoes.map((x, j) => (j === i ? e.target.value : x)))
+                  }
+                  rows={4}
+                  placeholder="A mesma oferta, escrita de outro jeito."
+                  className={`${campo} resize-y font-mono`}
+                  style={estilo}
+                />
+                <button
+                  onClick={() => setVariacoes(variacoes.filter((_, j) => j !== i))}
+                  className="mt-1 text-xs text-red-600 dark:text-red-400"
+                >
+                  Remover variação {i + 1}
+                </button>
+              </div>
+            ))}
+
+            {variacoes.length < 4 && (
+              <button
+                onClick={() => setVariacoes([...variacoes, ""])}
+                className="mt-2 rounded-lg border px-3 py-1.5 text-xs"
+                style={estilo}
+              >
+                Adicionar variação
+              </button>
+            )}
+            <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+              Cada envio sorteia entre a mensagem e as variações. Escreva a mesma
+              oferta com outras palavras — é a repetição dentro da lista que chama
+              atenção, não o conteúdo.
             </p>
           </div>
         )}

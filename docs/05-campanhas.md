@@ -203,6 +203,37 @@ de virar mensagem, `tick()` confere aquele número; quem não existe vira
 pula quem foi visto nos últimos 30 dias, o normal é isso não custar chamada
 nenhuma — a conta só aparece na primeira campanha de uma lista nova.
 
+## Variações do texto
+
+`{nome}` varia a primeira palavra e mais nada: o resto sai idêntico byte a byte
+para a lista inteira, e é essa a assinatura que os filtros da Meta leem
+primeiro. Foi assim nas duas campanhas que terminaram com o número removido do
+WhatsApp — **10/09** e **14/09**, as duas com `stream:error` 401 e
+`conflict type="device_removed"`.
+
+O formulário aceita até **4 variações** além da mensagem. É a mesma oferta
+escrita de outro jeito, não outra campanha. Cada envio sorteia uma delas —
+sorteio por envio, e não por campanha, porque o que se quer quebrar é a
+repetição dentro da mesma lista.
+
+A escolha acontece em `chat.claim_next_send()`, junto do sorteio do intervalo:
+quem decide o que sai é o banco, e vale para qualquer coisa que dispare.
+
+## A campanha que para sozinha
+
+Lista fria tem resposta baixa; resposta **zero** é outra coisa. É o que se vê
+quando a plataforma já está segurando o tráfego do número, antes de remover o
+aparelho: em 14/09 saíram 57 mensagens em 1h49 com 11 entregas confirmadas e
+nenhuma resposta até a queda.
+
+Passados **30 envios sem uma única resposta**, a campanha se pausa e grava o
+motivo, que aparece no cartão dela. Continuar dali é gastar o número para
+descobrir o que já dava para saber.
+
+A conta é por campanha e começa no `started_at`: retomar dá uma chance nova, e
+o motivo da pausa some junto — é o que "retomar" quer dizer. O corte mora em
+`chat.envios_sem_resposta()`.
+
 ## O log: quem, e por quê
 
 Os números embaixo de cada campanha são clicáveis. Cada um abre a lista de quem

@@ -46,6 +46,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         // formulário pré-preenchido para reusar a campanha como modelo.
         "id, name, status, media_kind, body, media_url, media_filename, media_mime, " +
           "scheduled_at, started_at, finished_at, window_start, window_end, weekdays, " +
+          "variacoes, pausa_motivo, " +
           "interval_min_seconds, interval_max_seconds, daily_limit, " +
           "channel_id, tags, group_ids, sem_grupo"
       )
@@ -81,6 +82,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const patch: Record<string, unknown> = {};
   if (parsed.data.status) patch.status = parsed.data.status;
+  // Retomar é dar uma chance nova: o motivo da pausa automática some junto,
+  // senão a campanha andaria de novo exibindo a explicação de por que parou.
+  if (parsed.data.status === "running") patch.pausa_motivo = null;
   if (parsed.data.scheduledAt !== undefined) patch.scheduled_at = parsed.data.scheduledAt;
   if (parsed.data.body !== undefined) patch.body = parsed.data.body;
   if (Object.keys(patch).length === 0) {

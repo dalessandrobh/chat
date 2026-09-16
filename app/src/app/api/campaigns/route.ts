@@ -15,6 +15,14 @@ const schema = z.object({
   channelId: z.string().uuid(),
   mediaKind: z.enum(["text", "image", "video", "audio", "document"]),
   body: z.string().max(4000).optional(),
+  /**
+   * Outras redações da mesma mensagem, sorteadas a cada envio.
+   *
+   * Mensagem idêntica byte a byte para a lista inteira é assinatura de disparo
+   * em massa — foi o que saiu nas duas campanhas que terminaram com o número
+   * removido do WhatsApp. `{nome}` varia a primeira palavra e mais nada.
+   */
+  variacoes: z.array(z.string().trim().min(1).max(4000)).max(4).optional(),
   mediaUrl: z.string().url().optional(),
   mediaFilename: z.string().max(255).optional(),
   mediaMime: z.string().max(120).optional(),
@@ -94,6 +102,7 @@ export async function POST(request: Request) {
       status: d.scheduledAt ? "scheduled" : "draft",
       media_kind: d.mediaKind,
       body: d.body ?? null,
+      variacoes: d.variacoes ?? [],
       media_url: d.mediaUrl ?? null,
       media_filename: d.mediaFilename ?? null,
       media_mime: d.mediaMime ?? null,
