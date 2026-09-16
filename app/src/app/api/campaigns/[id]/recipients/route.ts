@@ -30,6 +30,9 @@ const STATUS = ["pending", "sent", "delivered", "read", "failed", "skipped"];
 const RECORTE: Record<string, string[]> = {
   enviadas: ["sent", "delivered", "read"],
   delivered: ["delivered", "read"],
+  // Entregue e não aberta: "delivered" puro, já que a leitura promove a linha
+  // para "read". É o recorte que o número "não lidas" do cartão abre.
+  nao_lidas: ["delivered"],
 };
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {

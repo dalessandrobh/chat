@@ -384,6 +384,14 @@ export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
                   ativo={log?.campanha === c.campaign_id && log.status === "read"}
                   onClick={() => void verLog(c.campaign_id, "read")}
                 />
+                {/* Entregue e não aberta. Sai de "entregues" menos "lidas", e
+                    não de um status próprio: quem foi lida já esteve aqui. */}
+                <Chip
+                  rotulo="não lidas"
+                  valor={Number(c.entregues) - Number(c.lidas)}
+                  ativo={log?.campanha === c.campaign_id && log.status === "nao_lidas"}
+                  onClick={() => void verLog(c.campaign_id, "nao_lidas")}
+                />
                 <Chip
                   rotulo="falharam"
                   valor={Number(c.falharam)}
