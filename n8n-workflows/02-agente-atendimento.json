@@ -175,7 +175,7 @@
     },
     {
       "parameters": {
-        "toolDescription": "Passa a conversa para uma pessoa da equipe. Use quando pedirem atendente, quando perguntarem preço, prazo, pagamento ou disponibilidade, quando a pessoa se irritar, ou quando você já tiver reunido os dados da qualificação. Você escreve em `message` a última fala antes de a pessoa entrar: havendo pergunta do cliente que a base responde, a resposta vai ali, junto com o aviso, numa mensagem só. Não escreva mais nada depois de chamá-la — texto solto na mesma rodada não chega ao cliente.",
+        "toolDescription": "Passa a conversa para uma pessoa da equipe. Use quando pedirem atendente, quando perguntarem preço, prazo, pagamento ou disponibilidade, quando a pessoa se irritar, ou quando você já tiver reunido os dados da qualificação. Você escreve em `message` a última fala antes de a pessoa entrar: havendo pergunta do cliente que a base responde, a resposta vai ali, junto com o aviso, numa mensagem só. Chame-a uma única vez por rodada: a segunda chamada não chega ao cliente. Não escreva mais nada depois de chamá-la — texto solto na mesma rodada não chega ao cliente.",
         "method": "POST",
         "url": "http://chat-app:3000/api/internal/escalate",
         "authentication": "genericCredentialType",

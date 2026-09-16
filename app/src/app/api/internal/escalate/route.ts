@@ -20,6 +20,31 @@ import {
   avisoJaDado,
 } from "@/lib/horario";
 
+/**
+ * O que a ferramenta do n8n lê de volta.
+ *
+ * `{"ok":true}` não diz nada a quem está lendo: o modelo não sabe se falta
+ * alguma coisa e chama de novo. A resposta em texto é a trava dita em voz
+ * alta — a que vale continua sendo a do servidor, logo abaixo.
+ */
+const TRANSFERIDA = "Conversa transferida e cliente avisado. Não escreva mais nada nesta rodada.";
+const JA_TRANSFERIDA = "Já tem gente nesta conversa. Não escreva mais nada nesta rodada.";
+const JA_RESPONDIDA =
+  "Conversa já transferida e cliente já avisado nesta rodada. Não chame esta ferramenta de novo.";
+
+/** A última fala da conversa foi do bot? Então ele já respondeu esta rodada. */
+async function botFalouPorUltimo(conversationId: string): Promise<boolean> {
+  const { data } = await supabaseAdmin()
+    .from("messages")
+    .select("direction, author")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return data?.direction === "out" && data?.author === "bot";
+}
+
 const bodySchema = z.object({
   conversationId: z.string().uuid(),
   reason: z.string().max(500).optional(),
@@ -66,7 +91,22 @@ export async function POST(request: Request) {
   // Com um atendente na conversa, ou com a empresa aberta, a fila é de gente e
   // o bot não fala: sai calado, como sempre saiu.
   if (jaNaFila && !(await filaForaDoExpediente(conversationId))) {
-    return NextResponse.json({ ok: true, alreadyHuman: true });
+    return NextResponse.json({ ok: true, alreadyHuman: true, mensagem: JA_TRANSFERIDA });
+  }
+
+  // Duas chamadas na mesma rodada.
+  //
+  // Em 16/09/2026 o cliente escreveu "Revenda" uma vez, o n8n rodou uma vez, e
+  // o cliente recebeu duas mensagens dizendo a mesma coisa: o modelo chamou
+  // esta ferramenta duas vezes seguidas, e a segunda caiu no caminho de quem
+  // já está na fila — feito para o cliente que escreve DE NOVO enquanto
+  // espera, não para o bot que fala duas vezes sobre a mesma fala.
+  //
+  // A última mensagem da conversa é o que separa um caso do outro: sendo do
+  // bot, ele já respondeu ao que o cliente disse, e o que vem agora é repetição.
+  // Vindo do cliente, há fala nova, e aí o bot responde — como antes.
+  if (jaNaFila && (await botFalouPorUltimo(conversationId))) {
+    return NextResponse.json({ ok: true, jaRespondido: true, mensagem: JA_RESPONDIDA });
   }
 
   // Fora do expediente, "vou chamar uma pessoa" é uma promessa que só vence
@@ -103,7 +143,7 @@ export async function POST(request: Request) {
 
   // A conversa já estava na fila: falar era tudo o que faltava.
   if (jaNaFila) {
-    return NextResponse.json({ ok: true, alreadyHuman: true });
+    return NextResponse.json({ ok: true, alreadyHuman: true, mensagem: JA_TRANSFERIDA });
   }
 
   const { error } = await db
@@ -129,5 +169,5 @@ export async function POST(request: Request) {
     company_id: before.company_id,
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, mensagem: TRANSFERIDA });
 }
