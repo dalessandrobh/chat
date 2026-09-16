@@ -60,6 +60,10 @@ For multi-step tasks, state a brief plan:
 
 Só o estritamente necessário. O trabalho está no código, não na resposta.
 
-Sem blocos de código na resposta: cite arquivo:linha e descreva em texto.
-Sem tabelas, dumps de SQL, logs colados ou recapitulação do que já foi feito.
+Sem blocos de código, trechos de SQL, tabelas ou logs colados na resposta — só
+quando pedidos explicitamente. Cite arquivo:linha e descreva em texto.
+Sem recapitulação do que já foi feito.
 Resultado em uma ou duas frases; detalhe só se for perguntado.
+
+Decisão que é do usuário continua sendo perguntada: conciso não é decidir por
+ele. Pergunte de forma curta, com uma recomendação, e siga.
