@@ -219,6 +219,10 @@ repetição dentro da mesma lista.
 A escolha acontece em `chat.claim_next_send()`, junto do sorteio do intervalo:
 quem decide o que sai é o banco, e vale para qualquer coisa que dispare.
 
+As variações se corrigem depois, com a campanha correndo, no mesmo **Ver
+mensagem → Corrigir texto** que já corrigia o corpo: valem para a fila que
+falta, e quem já recebeu recebeu.
+
 ## A campanha que para sozinha
 
 Lista fria tem resposta baixa; resposta **zero** é outra coisa. É o que se vê

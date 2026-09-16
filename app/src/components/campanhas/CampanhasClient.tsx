@@ -122,11 +122,11 @@ export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
    * recebeu recebeu — disso não há volta —, e daqui em diante sai o texto
    * novo, porque a reserva de envio lê o corpo da campanha a cada mensagem.
    */
-  async function salvarTexto(id: string, body: string) {
+  async function salvarTexto(id: string, body: string, variacoes: string[]) {
     const r = await fetch(`/api/campaigns/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body, variacoes }),
     });
     const j = await r.json();
 
@@ -135,7 +135,7 @@ export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
       return false;
     }
 
-    setDetalhes((d) => ({ ...d, [id]: { ...d[id], body } }));
+    setDetalhes((d) => ({ ...d, [id]: { ...d[id], body, variacoes } }));
     setAviso({
       kind: "ok",
       text: "Texto corrigido. Quem ainda está na fila recebe a versão nova.",
@@ -343,7 +343,7 @@ export function CampanhasClient({ channels }: { channels: CanalDaCampanha[] }) {
                 <Mensagem
                   detalhe={detalhes[c.campaign_id]}
                   corrigivel={CORRIGIVEL.includes(c.status)}
-                  onSalvar={(body) => salvarTexto(c.campaign_id, body)}
+                  onSalvar={(body, variacoes) => salvarTexto(c.campaign_id, body, variacoes)}
                 />
               )}
 
@@ -439,10 +439,11 @@ function Mensagem({
 }: {
   detalhe: Detalhe | undefined;
   corrigivel: boolean;
-  onSalvar: (body: string) => Promise<boolean>;
+  onSalvar: (body: string, variacoes: string[]) => Promise<boolean>;
 }) {
   const [editando, setEditando] = useState(false);
   const [rascunho, setRascunho] = useState("");
+  const [rascunhoVars, setRascunhoVars] = useState<string[]>([]);
   const [salvando, setSalvando] = useState(false);
 
   if (!detalhe) {
@@ -455,9 +456,11 @@ function Mensagem({
 
   const nome = detalhe.exemploNome ?? "Maria Silva";
   const corpo = detalhe.body ?? "";
+  const variacoes = detalhe.variacoes ?? [];
+  const comNome = (t: string) => t.replaceAll("{nome}", nome.split(" ")[0] ?? nome);
   // Áudio não tem legenda: não há texto para corrigir.
   const temTexto = detalhe.media_kind !== "audio";
-  const renderizado = corpo.replaceAll("{nome}", nome.split(" ")[0] ?? nome);
+  const renderizado = comNome(corpo);
   const temPlaceholder = renderizado !== corpo;
 
   return (
@@ -498,12 +501,50 @@ function Mensagem({
             Quem já recebeu recebeu o texto antigo — isso não volta atrás. A
             fila que falta passa a sair com este.
           </p>
+
+          {rascunhoVars.map((v, i) => (
+            <div key={i} className="mt-3">
+              <p className="mb-1 text-xs" style={{ color: "var(--muted)" }}>
+                Variação {i + 1}
+              </p>
+              <textarea
+                value={v}
+                onChange={(e) =>
+                  setRascunhoVars(rascunhoVars.map((x, j) => (j === i ? e.target.value : x)))
+                }
+                rows={5}
+                maxLength={4000}
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+                style={{ background: "var(--panel)", borderColor: "var(--border)" }}
+              />
+              <button
+                onClick={() => setRascunhoVars(rascunhoVars.filter((_, j) => j !== i))}
+                className="mt-1 text-xs text-red-600 dark:text-red-400"
+              >
+                Remover variação {i + 1}
+              </button>
+            </div>
+          ))}
+
+          {rascunhoVars.length < 4 && (
+            <button
+              onClick={() => setRascunhoVars([...rascunhoVars, ""])}
+              className="mt-2 rounded-lg border px-2 py-1 text-xs"
+              style={{ borderColor: "var(--border)" }}
+            >
+              Adicionar variação
+            </button>
+          )}
+
           <div className="mt-2 flex gap-2">
             <button
               disabled={salvando}
               onClick={() => {
                 setSalvando(true);
-                void onSalvar(rascunho).then((ok) => {
+                // Variação em branco é campo aberto e não usado: some, em vez
+                // de virar um sorteio que manda mensagem vazia.
+                const limpas = rascunhoVars.map((v) => v.trim()).filter(Boolean);
+                void onSalvar(rascunho, limpas).then((ok) => {
                   setSalvando(false);
                   if (ok) setEditando(false);
                 });
@@ -530,6 +571,17 @@ function Mensagem({
               <code className="whitespace-pre-wrap">{corpo}</code>
             </p>
           )}
+
+          {/* As outras redações aparecem inteiras, e não como "3 variações":
+              o que se quer conferir aqui é o que cada pessoa pode ler. */}
+          {variacoes.map((v, i) => (
+            <div key={i} className="mt-3 border-t pt-3" style={{ borderColor: "var(--border)" }}>
+              <p className="mb-1 text-xs" style={{ color: "var(--muted)" }}>
+                Variação {i + 1}
+              </p>
+              <p className="whitespace-pre-wrap text-sm">{comNome(v)}</p>
+            </div>
+          ))}
         </>
       ) : (
         <p className="text-sm" style={{ color: "var(--muted)" }}>
@@ -539,7 +591,7 @@ function Mensagem({
 
       {corrigivel && temTexto && !editando && (
         <button
-          onClick={() => { setRascunho(corpo); setEditando(true); }}
+          onClick={() => { setRascunho(corpo); setRascunhoVars(variacoes); setEditando(true); }}
           className="mt-3 rounded-lg border px-2 py-1 text-xs"
           style={{ borderColor: "var(--border)" }}
         >

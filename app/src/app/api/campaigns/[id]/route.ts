@@ -23,6 +23,8 @@ const schema = z.object({
   scheduledAt: z.string().datetime({ offset: true }).nullable().optional(),
   /** Texto da mensagem, ou legenda da mídia. Vale para a fila que falta. */
   body: z.string().max(4000).optional(),
+  /** As outras redações. Mesma regra do corpo: valem para a fila que falta. */
+  variacoes: z.array(z.string().trim().min(1).max(4000)).max(4).optional(),
 });
 
 /** Onde ainda existe fila para a correção aproveitar. */
@@ -87,13 +89,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (parsed.data.status === "running") patch.pausa_motivo = null;
   if (parsed.data.scheduledAt !== undefined) patch.scheduled_at = parsed.data.scheduledAt;
   if (parsed.data.body !== undefined) patch.body = parsed.data.body;
+  if (parsed.data.variacoes !== undefined) patch.variacoes = parsed.data.variacoes;
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "Nada para alterar." }, { status: 400 });
   }
 
   const supabase = await supabaseServer();
 
-  if (parsed.data.body !== undefined) {
+  if (parsed.data.body !== undefined || parsed.data.variacoes !== undefined) {
     const { data: alvo } = await supabase
       .from("campaigns")
       .select("status, media_kind")
@@ -111,7 +114,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     // O `check` da tabela recusaria de qualquer jeito, mas com a mensagem do
     // Postgres. Campanha de texto sem texto é o erro fácil de cometer editando.
-    if (alvo.media_kind === "text" && parsed.data.body.trim() === "") {
+    if (alvo.media_kind === "text" && parsed.data.body?.trim() === "") {
       return NextResponse.json(
         { error: "Campanha de texto não pode ficar sem texto." },
         { status: 400 }
