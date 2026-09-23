@@ -766,3 +766,36 @@ porque é texto e não decisão: comparar a data de hoje com a da abertura **no
 fuso da empresa** é o que transforma nove horas de diferença em "amanhã". É lá
 também que mora a preposição do dia da semana — "no sábado", "na segunda-feira":
 cinco dias são "-feira" e femininos, dois não.
+
+## Quando o agente falha, o painel conta
+
+Entre **16/09 e 23/09/2026** o bot ficou mudo e ninguém percebeu por uma semana:
+a chamada ao Claude voltava `Your credit balance is too low`, o workflow morria,
+e do lado do painel a conversa apenas ficava "Aguardando". Foram 66 execuções
+seguidas com o mesmo erro, 32 conversas e 6 clientes sem resposta nenhuma.
+
+O webhook do n8n devolve 200 antes de a resposta existir — então, para o
+painel, despachar o turno e ser respondido eram a mesma coisa.
+
+Agora existe `chat.agent_failures`: uma linha aberta por empresa, com o motivo
+em português e o erro cru do provedor ao lado. **Só administrador vê** — a
+política da tabela diz isso, e o layout do painel também. A faixa fica entre o
+cabeçalho e o conteúdo, em toda tela, sem botão de fechar: cliente esperando
+resposta que não vem não pode depender de alguém lembrar.
+
+O aviso **fecha sozinho** no primeiro envio do bot que der certo
+(`/api/internal/send`). É essa a definição de resolvido que vale — não a de
+alguém clicar em ok.
+
+### Por que a detecção não mora no workflow
+
+O ramo de erro existe no n8n (`/api/internal/agent-failed`), e serve para o que
+quebra no próprio nó do Agente. Mas o erro que causou a semana muda nasce no nó
+**Claude**, que é sub-nó: a execução aborta ali e a saída de erro do Agente nunca
+é tomada — conferido em 23/09, a execução de teste morreu no mesmo ponto.
+
+Por isso quem repara no silêncio é o painel, na batida de minuto do relógio de
+prazos: `chat.detectar_silencio_do_agente(5)` procura conversa no bot, canal
+ativo, última fala do cliente e nada saído há mais de cinco minutos. Não depende
+do n8n estar de pé nem de saber qual nó quebrou — pega crédito acabado, chave
+recusada e workflow fora do ar do mesmo jeito.

@@ -78,3 +78,22 @@ export async function aplicarPrazos(): Promise<number> {
 
   return mudancas.length;
 }
+
+/**
+ * O agente está mudo?
+ *
+ * A falha do agente não chega até aqui sozinha: o webhook do n8n devolve 200
+ * antes de a resposta existir, e o erro que derrubou o bot entre 16 e 23/09/2026
+ * nascia no nó do Claude, sub-nó do Agente — nem a saída de erro do workflow o
+ * alcançava. Então o painel repara no silêncio pelo que ele mesmo tem: conversa
+ * no bot, canal ativo, última fala do cliente, e nada saiu desde então.
+ *
+ * Vale para qualquer causa — crédito acabado, chave recusada, n8n fora do ar —,
+ * que é a razão de a checagem morar aqui e não no workflow.
+ */
+export async function vigiarAgente(): Promise<void> {
+  const { error } = await supabaseAdmin().rpc("detectar_silencio_do_agente", {
+    p_minutos: 5,
+  });
+  if (error) console.error("[agente] não consegui checar o silêncio", error);
+}

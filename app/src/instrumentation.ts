@@ -32,7 +32,7 @@ export async function register() {
 
   const { tick } = await import("@/lib/campaigns");
   const { despacharTurnosVencidos } = await import("@/lib/bot-queue");
-  const { aplicarPrazos } = await import("@/lib/prazos");
+  const { aplicarPrazos, vigiarAgente } = await import("@/lib/prazos");
 
   let rodando = false;
 
@@ -75,6 +75,9 @@ export async function register() {
     aplicandoPrazos = true;
     try {
       await aplicarPrazos();
+      // Mesma batida: olhar se o agente parou de responder é uma pergunta de
+      // minuto, como os prazos, e não vale um relógio só para ela.
+      await vigiarAgente();
     } catch (err) {
       console.error("[prazos] relógio falhou", err);
     } finally {

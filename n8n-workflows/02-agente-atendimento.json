@@ -148,7 +148,8 @@
       "position": [
         464,
         208
-      ]
+      ],
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -498,6 +499,33 @@
       ],
       "id": "fim-escalou",
       "name": "Escalado — encerra"
+    },
+    {
+      "id": "avisar-falha",
+      "name": "Avisar falha do agente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        480
+      ],
+      "notes": "Sem isto a falha do agente é invisível no painel: o webhook já devolveu 200, e a conversa só fica 'Aguardando'.",
+      "parameters": {
+        "url": "http://chat-app:3000/api/internal/agent-failed",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ conversationId: $('Normalizar').item.json.conversationId, detalhe: String($json.error?.description || $json.error?.message || $json.error || 'falha sem detalhe').slice(0, 2000) }) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OdrT8rHiEb2lBu2j",
+          "name": "Chat — token de serviço"
+        }
+      }
     }
   ],
   "connections": {
@@ -568,6 +596,13 @@
         [
           {
             "node": "Já escalou?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Avisar falha do agente",
             "type": "main",
             "index": 0
           }

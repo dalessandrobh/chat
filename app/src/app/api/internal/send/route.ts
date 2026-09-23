@@ -74,7 +74,7 @@ export async function POST(request: Request) {
   // --- Trava do handoff ---
   const { data: conversation } = await supabaseAdmin()
     .from("conversations")
-    .select("id, mode")
+    .select("id, mode, company_id")
     .eq("id", input.conversationId)
     .maybeSingle();
 
@@ -136,6 +136,12 @@ export async function POST(request: Request) {
       { status: STATUS_BY_REASON[result.reason] ?? 400 }
     );
   }
+
+  // O bot voltou a falar: o aviso de falha do agente, se havia um, fecha aqui.
+  // É a definição de "resolvido" que vale — não a de alguém clicar em ok.
+  await supabaseAdmin().rpc("resolver_falhas_do_agente", {
+    p_company_id: conversation.company_id,
+  });
 
   return NextResponse.json(result);
 }

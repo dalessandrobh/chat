@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
 import { canManageKnowledge, canManageTemplates, canManageUsers, roleLabel } from "@/lib/roles";
+import { AvisoDoAgente, type FalhaDoAgente } from "@/components/painel/AvisoDoAgente";
 import { SairButton } from "@/components/auth/SairButton";
 import { ConversasLink } from "@/components/painel/ConversasLink";
 import { MenuPainel, type ItemDeMenu } from "@/components/painel/MenuPainel";
@@ -51,6 +52,16 @@ export default async function PainelLayout({
   // quem opera a plataforma entra na conta de clientes para dar suporte — e
   // não saber de quem é o inbox é como se responde pela empresa errada.
   const { data: empresa } = await supabase.from("companies").select("name").maybeSingle();
+
+  // O agente fora do ar é assunto de administrador — e a RLS da tabela diz o
+  // mesmo, então esta consulta volta vazia para quem não for.
+  const { data: falha } = canManageUsers(agent.role)
+    ? await supabase
+        .from("agent_failures")
+        .select("motivo, detalhe, primeira_em, ultima_em")
+        .is("resolvida_em", null)
+        .maybeSingle()
+    : { data: null };
 
   const itens: ItemDeMenu[] = [
     { href: "/templates", rotulo: "Templates" },
@@ -120,6 +131,8 @@ export default async function PainelLayout({
           <SairButton />
         </span>
       </header>
+
+      {falha && <AvisoDoAgente falha={falha as FalhaDoAgente} />}
 
       <main className="min-h-0 flex-1">{children}</main>
     </div>
