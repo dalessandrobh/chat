@@ -799,3 +799,15 @@ prazos: `chat.detectar_silencio_do_agente(5)` procura conversa no bot, canal
 ativo, última fala do cliente e nada saído há mais de cinco minutos. Não depende
 do n8n estar de pé nem de saber qual nó quebrou — pega crédito acabado, chave
 recusada e workflow fora do ar do mesmo jeito.
+
+### A janela do aviso
+
+O aviso é sobre agora. A semana muda deixou seis conversas com a última fala do
+cliente sem resposta, e essas o bot não responde mais — quem responde é gente,
+à mão. Com o agente de volta em 23/09, o aviso continuava aberto por causa
+delas, e alarme que não desliga deixa de ser alarme.
+
+A janela tem começo e fim: a fala precisa ser velha o bastante para o bot já ter
+respondido (cinco minutos) e nova o bastante para ainda ser problema de agora
+(três horas). O que ficou para trás é pendência de atendimento, e aparece no
+inbox como sempre apareceu.
