@@ -234,6 +234,32 @@ Como a marca vive em outra tabela, marcar como lida não gera evento de
 `conversations`: a tela recarrega a lista por conta própria depois de abrir a
 conversa, senão o contador ficaria na tela até o próximo evento qualquer.
 
+## Mandar arquivo pela conversa
+
+Receber mídia o painel já sabia: a Evolution entrega o base64 junto do evento e
+a bolha desenha a foto. Mandar, não — quem atendia pegava o celular, e a
+conversa ficava metade no painel e metade no aparelho.
+
+O compositor ganhou o clipe e o microfone. Imagem, vídeo, áudio e documento
+(pdf, doc/docx, xls/xlsx, csv, txt) até **16 MB**, que é onde o WhatsApp
+recusa; zip fica de fora porque é o que mais volta como "não consigo abrir".
+Imagem, vídeo e documento aceitam legenda; voz não, porque o balãozinho não tem
+onde mostrá-la.
+
+**O arquivo vai para um bucket privado.** O que a Evolution recebe é uma URL
+assinada de dez minutos — tempo de baixar uma vez. Público seria mais simples,
+é o que as campanhas fazem, mas ali o arquivo é peça de marketing e aqui é
+conteúdo de cliente: a foto do telhado da casa de alguém não pode virar
+endereço eterno que abre sem senha.
+
+`media.storagePath` guarda onde ele ficou, e `has_media` passou a olhar esse
+caminho além do base64 — é o que faz a bolha do que saiu desenhar igual à do
+que chegou, um mês depois, pela rota autenticada de sempre.
+
+**Voz é outro endpoint.** Áudio gravado na hora sai por `sendWhatsAppAudio`, o
+balãozinho que se ouve; áudio anexado como arquivo sai como anexo. Para quem
+recebe são coisas diferentes, e o encoding também é.
+
 ## O que falta
 
 Nada da lista original. O que vier agora é assunto novo.

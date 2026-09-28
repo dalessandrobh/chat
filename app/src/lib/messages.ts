@@ -26,6 +26,7 @@ import {
   EvolutionApiError,
   sendMedia as evoSendMedia,
   sendText as evoSendText,
+  sendWhatsAppAudio as evoSendAudio,
   type EvolutionMediaType,
 } from "@/lib/evolution/client";
 
@@ -143,7 +144,15 @@ const EVOLUTION_MEDIA_TYPE: Record<string, EvolutionMediaType> = {
 async function dispatchMedia(
   conversation: ConversationRow,
   to: string,
-  input: { kind: MediaKind; link?: string; mediaId?: string; caption?: string; filename?: string }
+  input: {
+    kind: MediaKind;
+    link?: string;
+    mediaId?: string;
+    caption?: string;
+    filename?: string;
+    /** Áudio gravado na hora: vai como balãozinho de voz, não como anexo. */
+    voice?: boolean;
+  }
 ): Promise<string | null> {
   if (providerOf(conversation) === "evolution") {
     // A Evolution não tem upload prévio: ou é URL pública, ou é base64.
@@ -152,6 +161,15 @@ async function dispatchMedia(
       throw new Error("Canal evolution exige `link` (URL pública) ou base64 na mídia.");
     }
     const conn = await conexaoDoCanal(conversation.channel_id);
+
+    // Voz e arquivo de áudio são coisas diferentes para quem recebe: um é o
+    // balãozinho que se ouve na hora, o outro é anexo para baixar. O endpoint
+    // é outro porque o encoding é outro.
+    if (input.voice) {
+      const voz = await evoSendAudio(conn, instanceOf(conversation), to, media);
+      return voz.key?.id ?? null;
+    }
+
     const result = await evoSendMedia(conn, instanceOf(conversation), to, {
       mediatype: EVOLUTION_MEDIA_TYPE[input.kind] ?? "document",
       media,
@@ -179,6 +197,7 @@ async function recordOutbound(input: {
   type: string;
   body: string | null;
   payload: Record<string, unknown>;
+  media?: Record<string, unknown> | null;
   author: "bot" | "agent" | "system";
   agentId?: string | null;
   templateId?: string | null;
@@ -197,6 +216,7 @@ async function recordOutbound(input: {
       type: input.type,
       body: input.body,
       payload: input.payload,
+      media: input.media ?? null,
       author: input.author,
       agent_id: input.agentId ?? null,
       template_id: input.templateId ?? null,
@@ -400,6 +420,14 @@ export async function sendMediaMessage(input: {
   mediaId?: string;
   caption?: string;
   filename?: string;
+  /** Onde o arquivo ficou no bucket, quando o envio partiu do painel. */
+  storagePath?: string;
+  /** O tipo do arquivo, que é o que a bolha usa para saber como desenhá-lo. */
+  mime?: string;
+  /** Duração do áudio ou vídeo, em segundos. */
+  seconds?: number;
+  /** Áudio gravado na hora, que sai como mensagem de voz. */
+  voice?: boolean;
   author: "bot" | "agent" | "system";
   agentId?: string | null;
 }): Promise<SendOutcome> {
@@ -422,6 +450,7 @@ export async function sendMediaMessage(input: {
       mediaId: input.mediaId,
       caption: input.caption,
       filename: input.filename,
+      voice: input.voice,
     });
 
     const messageId = await recordOutbound({
@@ -432,6 +461,18 @@ export async function sendMediaMessage(input: {
       type: input.kind,
       body: input.caption ?? null,
       payload: { link: input.link, id: input.mediaId, filename: input.filename },
+      // O mesmo `media` que a mídia recebida preenche, só que apontando para o
+      // bucket em vez de trazer o base64. É dele que saem `media_mime`,
+      // `media_filename` e `has_media` — e é por isso que a bolha desenha o
+      // que saiu do mesmo jeito que desenha o que chegou.
+      media: input.storagePath
+        ? {
+            storagePath: input.storagePath,
+            mimeType: input.mime ?? null,
+            filename: input.filename ?? null,
+            ...(input.seconds ? { seconds: input.seconds } : {}),
+          }
+        : null,
       author: input.author,
       agentId: input.agentId,
       status: "sent",

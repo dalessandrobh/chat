@@ -35,6 +35,12 @@ const bodySchema = z.discriminatedUnion("type", [
     mediaId: z.string().optional(),
     caption: z.string().max(1024).optional(),
     filename: z.string().optional(),
+    /** Onde o arquivo ficou no bucket — é por ele que a bolha reabre o anexo. */
+    storagePath: z.string().max(400).optional(),
+    mime: z.string().max(120).optional(),
+    seconds: z.number().int().min(0).max(7200).optional(),
+    /** Gravado na hora: sai como mensagem de voz, não como arquivo anexado. */
+    voice: z.boolean().optional(),
   }),
 ]);
 
@@ -140,6 +146,10 @@ export async function POST(request: Request) {
         mediaId: input.mediaId,
         caption: input.caption,
         filename: input.filename,
+        storagePath: input.storagePath,
+        mime: input.mime,
+        seconds: input.seconds,
+        voice: input.voice,
         author: "agent",
         agentId: agent.id,
       });

@@ -15,6 +15,7 @@
 
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { currentAgent, unauthorized } from "@/lib/auth";
 
 /**
@@ -75,6 +76,18 @@ function faixa(header: string | null, total: number) {
   return { inicio, fim };
 }
 
+/** Os bytes do anexo que o painel enviou, lidos do bucket privado. */
+async function doBucket(caminho: string): Promise<Buffer<ArrayBuffer> | null> {
+  const { data, error } = await supabaseAdmin().storage.from("conversas").download(caminho);
+  if (error || !data) {
+    console.error("[mídia] não consegui ler o arquivo do bucket", error);
+    return null;
+  }
+  // Cópia para um Buffer próprio: o que vem do Storage é um ArrayBuffer
+  // genérico, e a resposta pede bytes com dono definido.
+  return Buffer.from(new Uint8Array(await data.arrayBuffer()));
+}
+
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const agent = await currentAgent();
   if (!agent) return unauthorized();
@@ -88,8 +101,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     .eq("id", id)
     .maybeSingle();
 
-  const base64 = (data?.media as { base64?: string } | null)?.base64;
-  if (!base64) {
+  const midia = data?.media as { base64?: string; storagePath?: string } | null;
+
+  // O que chegou trouxe os bytes no evento; o que saiu do painel está no
+  // bucket privado. A leitura do arquivo é com a chave de serviço, mas quem
+  // decidiu se esta mensagem podia ser vista foi a RLS, na consulta acima.
+  const bytes = midia?.base64
+    ? Buffer.from(midia.base64, "base64")
+    : midia?.storagePath
+      ? await doBucket(midia.storagePath)
+      : null;
+
+  if (!bytes) {
     return NextResponse.json({ error: "Mensagem sem arquivo" }, { status: 404 });
   }
 
@@ -98,7 +121,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const tipo = podeAbrir ? declarado : "application/octet-stream";
   const nome = nomeSeguro(data?.media_filename, declarado || "application/octet-stream");
 
-  const bytes = Buffer.from(base64, "base64");
   const pedaco = faixa(request.headers.get("range"), bytes.length);
   const corpo = pedaco ? bytes.subarray(pedaco.inicio, pedaco.fim + 1) : bytes;
 
