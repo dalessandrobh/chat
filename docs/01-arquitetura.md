@@ -422,3 +422,25 @@ nenhuma linha de código a chama. Ela depende de `bot_resume_at`, preenchido só
 quando alguém assume a conversa escolhendo prazo no seletor — o campo estava
 nulo nas onze conversas. Continua ali para o prazo por conversa; o relógio novo
 é o prazo da empresa, que vale para toda conversa parada.
+
+## Entrar sem empresa: duas situações, duas telas
+
+Quem se cadastra sozinho nasce com linha em `chat.agents` e sem empresa — o
+gatilho `handle_new_user` cria a linha (e já aponta a empresa quando existe uma
+só). Essa pessoa vê **Criar sua empresa**.
+
+Quem foi removido em Usuários, ou nunca liberado, não tem linha nenhuma: a
+conta no Auth continua de pé, porque remover do Chat não apaga o login
+compartilhado com o dsearch. Essa pessoa vê **Sua conta ainda não tem acesso**,
+com o caminho de pedir liberação — e não um formulário de criar empresa.
+
+A diferença é a linha em `chat.agents`, e ela apareceu na prática: em
+**28/09/2026** o administrador da Eco Aquecedores foi removido sem querer (o
+cadastro certo foi apagado; ficou um com erro de digitação no e-mail,
+`ecoaquevedores`). Ao recuperar a senha e entrar, ele caiu na tela de criar
+empresa — a empresa dele já existia, com todas as conversas.
+
+Além disso, **nome de empresa é único**: comparado sem acento, sem maiúscula e
+com espaços normalizados, em `chat.create_company` e num índice único. Duas
+"Eco Aquecedores" não é conflito de banco, é gente perdida — quem procura a
+própria empresa e encontra duas não tem como saber qual é.
