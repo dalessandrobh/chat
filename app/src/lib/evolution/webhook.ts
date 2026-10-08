@@ -128,6 +128,8 @@ const MESSAGE_TYPE: Record<string, string> = {
   listResponseMessage: "interactive",
   buttonsResponseMessage: "interactive",
   templateButtonReplyMessage: "interactive",
+  // Modelo de mensagem que uma empresa manda: o que se lê é só o texto.
+  templateMessage: "text",
 };
 
 /**
@@ -147,6 +149,8 @@ function extractBody(message: Record<string, any>): string | null {
     message.buttonsResponseMessage?.selectedDisplayText ??
     message.templateButtonReplyMessage?.selectedDisplayText ??
     message.reactionMessage?.text ??
+    message.templateMessage?.hydratedTemplate?.hydratedContentText ??
+    message.templateMessage?.interactiveMessageTemplate?.body?.text ??
     (message.locationMessage
       ? `📍 ${message.locationMessage.degreesLatitude}, ${message.locationMessage.degreesLongitude}`
       : null) ??
