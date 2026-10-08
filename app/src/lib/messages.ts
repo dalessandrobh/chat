@@ -14,6 +14,7 @@
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { conexaoDoCanal, credenciaisDoCanal } from "@/lib/canais";
+import { PRAZO_APAGAR_MS, PRAZO_EDICAO_MS } from "@/lib/mensagem-editavel";
 import {
   MetaApiError,
   buildTemplateComponents,
@@ -27,6 +28,8 @@ import {
   sendMedia as evoSendMedia,
   sendText as evoSendText,
   sendWhatsAppAudio as evoSendAudio,
+  editMessage as evoEditMessage,
+  deleteMessageForEveryone as evoDeleteMessage,
   type EvolutionMediaType,
 } from "@/lib/evolution/client";
 
@@ -573,4 +576,164 @@ async function handleSendFailure(
     message: details.message ?? "Falha ao enviar",
     code: isMeta ? err.details?.code : isEvolution ? err.status : undefined,
   };
+}
+
+// -----------------------------------------------------------------------------
+// Editar e apagar o que já saiu
+// -----------------------------------------------------------------------------
+
+export type ChangeOutcome =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "not_found" | "not_allowed" | "expired" | "disconnected" | "provider_error";
+      message: string;
+    };
+
+interface MessageRow {
+  id: string;
+  conversation_id: string;
+  company_id: string;
+  direction: "in" | "out";
+  author: string;
+  agent_id: string | null;
+  type: string;
+  body: string | null;
+  status: string;
+  wa_message_id: string | null;
+  deleted_at: string | null;
+  created_at: string;
+}
+
+/**
+ * Carrega a mensagem e decide se ela ainda pode ser mexida. Só vale o que o
+ * painel mandou (`agent_id` preenchido): o que saiu pelo celular, ou pelo bot,
+ * não passa — por enquanto.
+ */
+async function loadChangeable(
+  messageId: string,
+  prazoMs: number,
+  verbo: string
+): Promise<
+  | { ok: true; message: MessageRow; conversation: ConversationRow }
+  | { ok: false; outcome: ChangeOutcome }
+> {
+  const falha = (reason: Exclude<ChangeOutcome, { ok: true }>["reason"], message: string) => ({
+    ok: false as const,
+    outcome: { ok: false as const, reason, message },
+  });
+
+  const { data } = await supabaseAdmin()
+    .from("messages")
+    .select(
+      "id, conversation_id, company_id, direction, author, agent_id, type, body, status, wa_message_id, deleted_at, created_at"
+    )
+    .eq("id", messageId)
+    .maybeSingle();
+
+  const message = data as MessageRow | null;
+  if (!message || message.deleted_at) return falha("not_found", "Mensagem não encontrada");
+
+  if (message.direction !== "out" || message.author !== "agent" || !message.agent_id) {
+    return falha("not_allowed", `Só dá para ${verbo} mensagens enviadas pelo painel.`);
+  }
+  if (message.status === "failed" || message.status === "queued" || !message.wa_message_id) {
+    return falha("not_allowed", `Esta mensagem não chegou a sair; não há o que ${verbo}.`);
+  }
+  if (Date.now() - new Date(message.created_at).getTime() > prazoMs) {
+    return falha("expired", `O prazo do WhatsApp para ${verbo} esta mensagem passou.`);
+  }
+
+  const conversation = await loadConversation(message.conversation_id);
+  if (!conversation?.contacts?.wa_id) return falha("not_found", "Conversa não encontrada");
+  if (providerOf(conversation) !== "evolution") {
+    return falha("not_allowed", `Este canal não permite ${verbo} mensagens.`);
+  }
+
+  return { ok: true, message, conversation };
+}
+
+function keyOf(message: MessageRow, conversation: ConversationRow) {
+  return {
+    remoteJid: `${conversation.contacts!.wa_id}@s.whatsapp.net`,
+    fromMe: true,
+    id: message.wa_message_id!,
+  };
+}
+
+function providerFailure(err: unknown): ChangeOutcome {
+  if (err instanceof EvolutionApiError && err.isDisconnected) {
+    return {
+      ok: false,
+      reason: "disconnected",
+      message: "O WhatsApp desconectou desta instância. Reconecte lendo o QR em Canais.",
+    };
+  }
+  return {
+    ok: false,
+    reason: "provider_error",
+    message: err instanceof Error ? err.message : String(err),
+  };
+}
+
+/** Troca o texto de uma mensagem enviada. A marca "editada" é posta pelo banco. */
+export async function editTextMessage(input: {
+  messageId: string;
+  text: string;
+}): Promise<ChangeOutcome> {
+  const loaded = await loadChangeable(input.messageId, PRAZO_EDICAO_MS, "editar");
+  if (!loaded.ok) return loaded.outcome;
+  const { message, conversation } = loaded;
+
+  if (message.type !== "text") {
+    return { ok: false, reason: "not_allowed", message: "Só dá para editar mensagens de texto." };
+  }
+  if (input.text === message.body) return { ok: true };
+
+  try {
+    await evoEditMessage(
+      await conexaoDoCanal(conversation.channel_id),
+      instanceOf(conversation),
+      keyOf(message, conversation),
+      input.text
+    );
+  } catch (err) {
+    return providerFailure(err);
+  }
+
+  const { error } = await supabaseAdmin()
+    .from("messages")
+    .update({ body: input.text, payload: { text: { body: input.text } } })
+    .eq("id", message.id)
+    .eq("company_id", message.company_id);
+  // O WhatsApp já aceitou; se o banco não acompanhou, o erro precisa aparecer.
+  if (error) throw new Error(`Edição enviada, mas não gravada: ${error.message}`);
+
+  return { ok: true };
+}
+
+/** Apaga para todos. A linha fica no banco, marcada; quem esconde é a interface. */
+export async function revokeMessage(input: { messageId: string }): Promise<ChangeOutcome> {
+  const loaded = await loadChangeable(input.messageId, PRAZO_APAGAR_MS, "apagar");
+  if (!loaded.ok) return loaded.outcome;
+  const { message, conversation } = loaded;
+
+  try {
+    await evoDeleteMessage(
+      await conexaoDoCanal(conversation.channel_id),
+      instanceOf(conversation),
+      keyOf(message, conversation)
+    );
+  } catch (err) {
+    return providerFailure(err);
+  }
+
+  const { error } = await supabaseAdmin()
+    .from("messages")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", message.id)
+    .eq("company_id", message.company_id);
+  if (error) throw new Error(`Apagada no WhatsApp, mas não gravada: ${error.message}`);
+
+  return { ok: true };
 }

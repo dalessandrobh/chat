@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Message } from "@/lib/types";
+import { podeApagar, podeEditar } from "@/lib/mensagem-editavel";
 
 const STATUS_ICON: Record<string, string> = {
   queued: "🕓",
@@ -147,22 +148,105 @@ function Anexo({ message }: { message: Message }) {
   );
 }
 
+/**
+ * Editar e apagar, atrás de um botão discreto. O menu só lista o que ainda
+ * vale: passado o prazo do WhatsApp a mensagem fica como está, sem botão
+ * que prometa o que o servidor vai recusar.
+ */
+function MenuDaMensagem({
+  message,
+  onEditar,
+  onApagar,
+}: {
+  message: Message;
+  onEditar: (m: Message) => void;
+  onApagar: (m: Message) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const editar = podeEditar(message);
+  const apagar = podeApagar(message);
+
+  useEffect(() => {
+    if (!aberto) return;
+    const fora = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setAberto(false);
+    };
+    document.addEventListener("mousedown", fora);
+    return () => document.removeEventListener("mousedown", fora);
+  }, [aberto]);
+
+  if (!editar && !apagar) return null;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setAberto((a) => !a)}
+        title="Editar ou apagar"
+        className="rounded px-1 leading-none opacity-50 hover:opacity-100"
+      >
+        ⋯
+      </button>
+      {aberto && (
+        <div
+          className="absolute bottom-full right-0 z-10 mb-1 w-28 overflow-hidden rounded-lg border text-xs shadow-md"
+          style={{ borderColor: "var(--border)", background: "var(--panel)" }}
+        >
+          {editar && (
+            <button
+              onClick={() => {
+                setAberto(false);
+                onEditar(message);
+              }}
+              className="block w-full px-3 py-2 text-left hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              Editar
+            </button>
+          )}
+          {apagar && (
+            <button
+              onClick={() => {
+                setAberto(false);
+                onApagar(message);
+              }}
+              className="block w-full px-3 py-2 text-left text-red-700 hover:bg-black/5 dark:text-red-300 dark:hover:bg-white/10"
+            >
+              Apagar
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Bubble({
   message,
   contactName,
   nomeDoBot,
+  podeAgir,
+  editando,
+  onEditar,
+  onApagar,
 }: {
   message: Message;
   contactName: string;
   nomeDoBot: string;
+  podeAgir: boolean;
+  editando: boolean;
+  onEditar: (m: Message) => void;
+  onApagar: (m: Message) => void;
 }) {
   const incoming = message.direction === "in";
   const failed = message.status === "failed";
+  const apagada = !!message.deleted_at;
 
   return (
     <div className={`flex ${incoming ? "justify-start" : "justify-end"}`}>
       <div
         className={`max-w-[85%] rounded-xl px-3 py-2 shadow-sm md:max-w-[75%] lg:max-w-[70%] ${
+          editando ? "ring-2 ring-wa-green " : ""
+        }${
           incoming
             ? "rounded-tl-sm bg-white dark:bg-[#202c33]"
             : failed
@@ -172,7 +256,11 @@ function Bubble({
       >
         <AuthorTag message={message} contactName={contactName} nomeDoBot={nomeDoBot} />
 
-        {message.media_mime || message.has_media ? (
+        {apagada ? (
+          // Sem texto e sem anexo: o corpo continua no banco, mas quem apagou
+          // para todos não quer que o painel o releia.
+          <p className="text-sm italic opacity-60">🚫 Mensagem apagada</p>
+        ) : message.media_mime || message.has_media ? (
           <>
             {message.has_media && <Anexo message={message} />}
             <p className="text-[11px] italic opacity-60">{rotuloMidia(message)}</p>
@@ -193,6 +281,7 @@ function Bubble({
         )}
 
         <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-60">
+          {message.edited_at && !apagada && <span className="italic">editada</span>}
           <span>
             {new Date(message.created_at).toLocaleTimeString("pt-BR", {
               hour: "2-digit",
@@ -204,6 +293,7 @@ function Bubble({
               {STATUS_ICON[message.status]}
             </span>
           )}
+          {podeAgir && <MenuDaMensagem message={message} onEditar={onEditar} onApagar={onApagar} />}
         </div>
       </div>
     </div>
@@ -214,11 +304,20 @@ export function MessageThread({
   messages,
   contactName,
   nomeDoBot,
+  podeAgir,
+  editandoId,
+  onEditar,
+  onApagar,
 }: {
   messages: Message[];
   contactName: string;
   /** Como a automação se chama. "bot" quando a empresa não deu nome. */
   nomeDoBot: string;
+  /** Só o dono da conversa edita e apaga. */
+  podeAgir: boolean;
+  editandoId: string | null;
+  onEditar: (m: Message) => void;
+  onApagar: (m: Message) => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -238,6 +337,10 @@ export function MessageThread({
           message={message}
           contactName={contactName}
           nomeDoBot={nomeDoBot}
+          podeAgir={podeAgir}
+          editando={message.id === editandoId}
+          onEditar={onEditar}
+          onApagar={onApagar}
         />
       ))}
       <div ref={bottomRef} />

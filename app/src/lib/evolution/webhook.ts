@@ -76,13 +76,31 @@ export interface EvoStatusUpdate {
   timestamp: Date;
 }
 
+/** Alguém editou o texto de uma mensagem que já existia. */
+export interface EvoMessageEdit {
+  kind: "edit";
+  waMessageId: string;
+  body: string;
+}
+
+/** Alguém apagou uma mensagem para todos. */
+export interface EvoMessageRevoke {
+  kind: "revoke";
+  waMessageId: string;
+}
+
 export interface EvoConnectionUpdate {
   kind: "connection";
   instanceName: string;
   state: "open" | "connecting" | "close";
 }
 
-export type EvoEvent = EvoInboundMessage | EvoStatusUpdate | EvoConnectionUpdate;
+export type EvoEvent =
+  | EvoInboundMessage
+  | EvoStatusUpdate
+  | EvoMessageEdit
+  | EvoMessageRevoke
+  | EvoConnectionUpdate;
 
 // -----------------------------------------------------------------------------
 // Tipos de mensagem do Baileys → nosso vocabulário
@@ -166,6 +184,10 @@ export function parseWebhook(envelope: EvolutionEnvelope): EvoEvent[] {
       return parseInbound(instanceName, data);
     case "messages.update":
       return parseStatus(data);
+    case "messages.edited":
+      return parseEdit(data);
+    case "messages.delete":
+      return parseRevoke(data);
     case "connection.update":
       return parseConnection(instanceName, data);
     default:
@@ -222,6 +244,30 @@ function parseStatus(data: Record<string, any>): EvoEvent[] {
   if (!id || !status) return [];
 
   return [{ kind: "status", waMessageId: id, status, timestamp: new Date() }];
+}
+
+/**
+ * Edição. A Evolution repassa o `protocolMessage` do Baileys: `key` é a da
+ * mensagem original, e `editedMessage` já é a mensagem nova, com o texto.
+ */
+function parseEdit(data: Record<string, any>): EvoEvent[] {
+  const id = data.key?.id;
+  const body = data.editedMessage ? extractBody(data.editedMessage)?.trim() : null;
+  if (!id || !body) return [];
+
+  return [{ kind: "edit", waMessageId: id, body }];
+}
+
+/**
+ * Revogação. Chega de dois jeitos: a chave solta com `status: "DELETED"` (o
+ * outro lado apagou) ou dentro de `key` (apagamos por aqui, e o `id` de fora é
+ * o interno da Evolution — por isso `key` tem precedência).
+ */
+function parseRevoke(data: Record<string, any>): EvoEvent[] {
+  const id = data.key?.id ?? data.id;
+  if (typeof id !== "string" || !id) return [];
+
+  return [{ kind: "revoke", waMessageId: id }];
 }
 
 function parseConnection(instanceName: string, data: Record<string, any>): EvoEvent[] {

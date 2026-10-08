@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { InboxRow, Template } from "@/lib/types";
+import type { InboxRow, Message, Template } from "@/lib/types";
 import { templateBody } from "@/lib/types";
 import { ACCEPT, LIMITE_BYTES, tipoDeMidia } from "@/lib/midia-enviada";
 import type { MediaKind } from "@/lib/meta/client";
@@ -73,11 +73,16 @@ export function Composer({
   agenteId,
   templates,
   onSent,
+  editando,
+  onCancelarEdicao,
 }: {
   row: InboxRow;
   agenteId: string | null;
   templates: Template[];
   onSent: () => void;
+  /** Mensagem já enviada cujo texto está sendo corrigido; nulo: escrevendo uma nova. */
+  editando: Message | null;
+  onCancelarEdicao: () => void;
 }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -106,6 +111,15 @@ export function Composer({
     return () => clearInterval(t);
   }, [gravando]);
 
+  // Começar a editar põe o texto da mensagem na caixa e larga qualquer anexo
+  // em preparo: editar é só texto, e os dois não convivem.
+  useEffect(() => {
+    if (!editando) return;
+    setText(editando.body ?? "");
+    setError(null);
+    if (anexo) limparAnexo();
+  }, [editando]);
+
   const souDono = !!agenteId && row.assigned_agent_id === agenteId;
   const isBot = row.mode === "bot";
   const semDono = !isBot && !row.assigned_agent_id;
@@ -133,7 +147,39 @@ export function Composer({
     }
   }
 
+  async function salvarEdicao() {
+    if (!editando || !text.trim()) return;
+    setSending(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/messages/${editando.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text.trim() }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(json.error ?? "Falha ao editar");
+      setText("");
+      onCancelarEdicao();
+      onSent();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function cancelarEdicao() {
+    setText("");
+    setError(null);
+    onCancelarEdicao();
+  }
+
   function sendText() {
+    if (editando) {
+      void salvarEdicao();
+      return;
+    }
     if (!text.trim()) return;
     void post({ type: "text", conversationId: row.conversation_id, text: text.trim() });
   }
@@ -306,6 +352,20 @@ export function Composer({
         </p>
       )}
 
+      {editando && (
+        <div className="mb-2 flex items-center gap-3 rounded-lg border px-3 py-2 text-sm"
+             style={{ borderColor: "var(--border)", background: "var(--bg)" }}>
+          <span className="shrink-0 text-xs font-medium">Editando mensagem</span>
+          <span className="min-w-0 flex-1 truncate text-xs" style={{ color: "var(--muted)" }}>
+            {editando.body}
+          </span>
+          <button onClick={cancelarEdicao} disabled={sending} className="text-xs underline disabled:opacity-40"
+                  style={{ color: "var(--muted)" }}>
+            Cancelar
+          </button>
+        </div>
+      )}
+
       {gravando && (
         <div className="mb-2 flex items-center gap-3 rounded-lg border px-3 py-2 text-sm"
              style={{ borderColor: "var(--border)", background: "var(--bg)" }}>
@@ -375,7 +435,7 @@ export function Composer({
       <div className="flex items-end gap-2">
         <button
           onClick={() => arquivoRef.current?.click()}
-          disabled={blocked || sending || gravando || !!anexo}
+          disabled={blocked || sending || gravando || !!anexo || !!editando}
           title="Anexar imagem, vídeo, áudio ou documento"
           className="rounded-lg border px-3 py-2 text-sm transition hover:bg-black/[0.03] disabled:opacity-40 dark:hover:bg-white/[0.05]"
           style={{ borderColor: "var(--border)" }}
@@ -385,7 +445,7 @@ export function Composer({
 
         <button
           onClick={() => (gravando ? pararGravacao() : void gravar())}
-          disabled={blocked || sending || !!anexo}
+          disabled={blocked || sending || !!anexo || !!editando}
           title={gravando ? "Parar a gravação" : "Gravar mensagem de voz"}
           className={`rounded-lg border px-3 py-2 text-sm transition hover:bg-black/[0.03] disabled:opacity-40 dark:hover:bg-white/[0.05] ${
             gravando ? "border-red-500 text-red-600 dark:text-red-400" : ""
@@ -397,7 +457,7 @@ export function Composer({
 
         <button
           onClick={() => setPickerOpen(true)}
-          disabled={!souDono || approved.length === 0}
+          disabled={!souDono || approved.length === 0 || !!editando}
           title={
             approved.length === 0
               ? "Nenhum template aprovado. Cadastre em Templates."
@@ -423,7 +483,9 @@ export function Composer({
           disabled={blocked || sending || (anexo?.voz ?? false)}
           rows={1}
           placeholder={
-            anexo
+            editando
+              ? "Corrija o texto…"
+              : anexo
               ? anexo.voz
                 ? "Mensagem de voz vai sem legenda"
                 : "Legenda (opcional)"
@@ -450,6 +512,8 @@ export function Composer({
               largura de quem está escrevendo. */}
           {sending ? (
             "…"
+          ) : editando ? (
+            "Salvar"
           ) : (
             <>
               <span className="md:hidden">➤</span>

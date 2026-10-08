@@ -78,6 +78,10 @@ export interface Message {
   agent: { full_name: string | null } | null;
   template_id: string | null;
   created_at: string;
+  /** Quando o texto foi editado pela última vez. Nulo: nunca foi. */
+  edited_at: string | null;
+  /** Apagada para todos. A linha continua no banco; a bolha mostra o aviso. */
+  deleted_at: string | null;
 }
 
 export interface Template {

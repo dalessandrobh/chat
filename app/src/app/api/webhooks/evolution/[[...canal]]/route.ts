@@ -24,6 +24,8 @@ import {
   type EvolutionEnvelope,
   type EvoConnectionUpdate,
   type EvoInboundMessage,
+  type EvoMessageEdit,
+  type EvoMessageRevoke,
   type EvoStatusUpdate,
 } from "@/lib/evolution/webhook";
 
@@ -103,6 +105,12 @@ export async function POST(
           break;
         case "status":
           await handleStatusUpdate(event, credenciais.companyId);
+          break;
+        case "edit":
+          await handleEdit(event, credenciais.companyId);
+          break;
+        case "revoke":
+          await handleRevoke(event, credenciais.companyId);
           break;
         case "connection":
           await handleConnectionUpdate(event);
@@ -412,6 +420,34 @@ async function handleStatusUpdate(event: EvoStatusUpdate, companyId: string) {
     .update(destino)
     .eq("wa_message_id", event.waMessageId)
     .eq("company_id", companyId);
+}
+
+// -----------------------------------------------------------------------------
+// Edição e revogação
+// -----------------------------------------------------------------------------
+
+/**
+ * Sem tabela de idempotência: as duas operações são "ponha a linha neste
+ * estado", e repetir não muda nada. O banco carimba `edited_at` só quando o
+ * texto de fato muda, então o eco de uma edição feita pelo painel — que já
+ * gravou o mesmo texto — passa em branco. Mesma cláusula de empresa do status.
+ */
+async function handleEdit(event: EvoMessageEdit, companyId: string) {
+  await supabaseAdmin()
+    .from("messages")
+    .update({ body: event.body })
+    .eq("wa_message_id", event.waMessageId)
+    .eq("company_id", companyId)
+    .is("deleted_at", null);
+}
+
+async function handleRevoke(event: EvoMessageRevoke, companyId: string) {
+  await supabaseAdmin()
+    .from("messages")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("wa_message_id", event.waMessageId)
+    .eq("company_id", companyId)
+    .is("deleted_at", null);
 }
 
 // -----------------------------------------------------------------------------

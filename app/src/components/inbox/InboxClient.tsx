@@ -34,6 +34,8 @@ export function InboxClient({
    */
   const [threadNaFrente, setThreadNaFrente] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  /** A mensagem cujo texto está no Composer para ser corrigido. */
+  const [editando, setEditando] = useState<Message | null>(null);
   const [filter, setFilter] = useState("");
   /** Encerradas ficam de fora por padrão: a lista é a fila de trabalho, não o arquivo. */
   const [mostrarEncerradas, setMostrarEncerradas] = useState(false);
@@ -90,7 +92,7 @@ export function InboxClient({
         // O nome do agente vem junto: sem ele toda resposta da equipe aparece
         // como "você", inclusive a que outra pessoa mandou ontem.
         .select(
-          "id, conversation_id, direction, wa_message_id, type, body, has_media, media_mime, media_filename, media_seconds, status, error, author, agent_id, template_id, created_at, agent:agents(full_name)"
+          "id, conversation_id, direction, wa_message_id, type, body, has_media, media_mime, media_filename, media_seconds, status, error, author, agent_id, template_id, created_at, edited_at, deleted_at, agent:agents(full_name)"
         )
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true })
@@ -120,6 +122,8 @@ export function InboxClient({
   }, [loadRows]);
 
   useEffect(() => {
+    // A edição é de uma mensagem desta conversa; trocar de conversa a larga.
+    setEditando(null);
     if (!selectedId) {
       setMessages([]);
       return;
@@ -262,6 +266,24 @@ export function InboxClient({
     if (selectedId) void loadMessages(selectedId);
   }, [loadRows, loadMessages, selectedId]);
 
+  async function apagar(message: Message) {
+    if (
+      !confirm(
+        "Apagar esta mensagem para todos? O cliente deixa de vê-la no WhatsApp, e isso não dá para desfazer."
+      )
+    ) {
+      return;
+    }
+    const response = await fetch(`/api/messages/${message.id}`, { method: "DELETE" });
+    if (!response.ok) {
+      const json = await response.json().catch(() => ({}));
+      alert(json.error ?? "Não consegui apagar a mensagem.");
+      return;
+    }
+    if (editando?.id === message.id) setEditando(null);
+    refresh();
+  }
+
   // --- Render -----------------------------------------------------------
 
   return (
@@ -314,12 +336,18 @@ export function InboxClient({
               messages={messages}
               contactName={selected.contact_name}
               nomeDoBot={nomeDoBot}
+              podeAgir={!!agenteId && selected.assigned_agent_id === agenteId}
+              editandoId={editando?.id ?? null}
+              onEditar={setEditando}
+              onApagar={(m) => void apagar(m)}
             />
             <Composer
               row={selected}
               agenteId={agenteId}
               templates={templates}
               onSent={refresh}
+              editando={editando}
+              onCancelarEdicao={() => setEditando(null)}
             />
           </>
         ) : (

@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { currentAgent, unauthorized } from "@/lib/auth";
+import { recusaSeNaoForDono } from "@/lib/dono-da-conversa";
 import {
   sendMediaMessage,
   sendTemplateMessage,
@@ -44,22 +45,6 @@ const bodySchema = z.discriminatedUnion("type", [
   }),
 ]);
 
-/**
- * Por que o envio foi recusado, na linguagem de quem está olhando a tela.
- *
- * São três situações diferentes com o mesmo desfecho, e dizer só "sem
- * permissão" faria o atendente procurar o problema no lugar errado.
- */
-function recusa(mode: string, donoId: string | null, donoNome: string | null): string {
-  if (mode === "bot") {
-    return "A automação está respondendo esta conversa. Assuma para responder.";
-  }
-  if (!donoId) {
-    return "Ninguém assumiu esta conversa ainda. Assuma para responder.";
-  }
-  return `${donoNome?.trim() || "Outro atendente"} está atendendo esta conversa.`;
-}
-
 /** Traduz o motivo da recusa para o código HTTP certo. */
 const STATUS_BY_REASON: Record<string, number> = {
   not_found: 404,
@@ -80,38 +65,13 @@ export async function POST(request: Request) {
     );
   }
 
-  // Só o dono fala. Sem isto, dois atendentes respondem o mesmo cliente ao
-  // mesmo tempo e nada no caminho reclama — o cliente é que descobre, com duas
-  // respostas diferentes para a mesma pergunta.
-  //
-  // A leitura é pela sessão da pessoa, então a RLS já garante que a conversa é
-  // da empresa dela: não achar aqui é "não existe para você".
+  // Só o dono fala. A regra mora em lib/dono-da-conversa.ts, junto da de
+  // editar e apagar.
   const supabase = await supabaseServer();
-  const { data: conversa } = await supabase
-    .from("conversations")
-    .select("mode, assigned_agent_id")
-    .eq("id", parsed.data.conversationId)
-    .maybeSingle();
-
-  if (!conversa) {
-    return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
-  }
-
-  if (conversa.assigned_agent_id !== agent.id) {
-    // O nome só é buscado quando a resposta vai ser recusada. No caminho que
-    // dá certo, que é o normal, esta consulta não acontece.
-    const { data: dono } = conversa.assigned_agent_id
-      ? await supabase
-          .from("agents")
-          .select("full_name")
-          .eq("id", conversa.assigned_agent_id)
-          .maybeSingle()
-      : { data: null };
-
-    return NextResponse.json(
-      { error: recusa(conversa.mode, conversa.assigned_agent_id, dono?.full_name ?? null), conflict: true },
-      { status: 409 }
-    );
+  const recusa = await recusaSeNaoForDono(supabase, parsed.data.conversationId, agent.id);
+  if (recusa) {
+    const { status, ...corpo } = recusa;
+    return NextResponse.json(corpo, { status });
   }
 
   const input = parsed.data;

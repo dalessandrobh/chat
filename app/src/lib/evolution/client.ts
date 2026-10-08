@@ -269,6 +269,41 @@ export function markAsRead(conn: ConexaoEvolution,
   });
 }
 
+/** A chave que o WhatsApp usa para achar uma mensagem já enviada. */
+export interface MessageKey {
+  remoteJid: string;
+  fromMe: boolean;
+  id: string;
+}
+
+/**
+ * Troca o texto de uma mensagem que já saiu. O WhatsApp só aceita texto, e só
+ * por alguns minutos depois do envio; passado o prazo a Evolution devolve erro.
+ * `number` é obrigatório no schema da v2.3.7, embora quem manda a edição seja a
+ * `key`.
+ */
+export function editMessage(conn: ConexaoEvolution,
+  instance: string,
+  key: MessageKey,
+  text: string
+): Promise<unknown> {
+  return evoFetch(conn, `/chat/updateMessage/${encodeURIComponent(instance)}`, {
+    method: "POST",
+    body: JSON.stringify({ number: jidToWaId(key.remoteJid), text, key }),
+  });
+}
+
+/** Apaga para todos: some também do aparelho de quem recebeu. */
+export function deleteMessageForEveryone(conn: ConexaoEvolution,
+  instance: string,
+  key: MessageKey
+): Promise<unknown> {
+  return evoFetch(conn, `/chat/deleteMessageForEveryone/${encodeURIComponent(instance)}`, {
+    method: "DELETE",
+    body: JSON.stringify(key),
+  });
+}
+
 /** Baixa a mídia de uma mensagem recebida, já decriptada, em base64. */
 export function getMediaBase64(conn: ConexaoEvolution,
   instance: string,
@@ -366,6 +401,8 @@ export function deleteInstance(conn: ConexaoEvolution,
 export const WEBHOOK_EVENTS = [
   "MESSAGES_UPSERT",
   "MESSAGES_UPDATE",
+  "MESSAGES_EDITED",
+  "MESSAGES_DELETE",
   "SEND_MESSAGE",
   "CONNECTION_UPDATE",
   "QRCODE_UPDATED",
