@@ -76,11 +76,14 @@ export interface EvoStatusUpdate {
   timestamp: Date;
 }
 
-/** Alguém editou o texto de uma mensagem que já existia. */
+/**
+ * Alguém editou uma mensagem que já existia. `body` nulo é a edição que veio
+ * criptografada: sabemos qual mensagem mudou, não o texto novo.
+ */
 export interface EvoMessageEdit {
   kind: "edit";
   waMessageId: string;
-  body: string;
+  body: string | null;
 }
 
 /** Alguém apagou uma mensagem para todos. */
@@ -208,6 +211,13 @@ function parseInbound(instanceName: string, data: Record<string, any>): EvoEvent
   if (isGroupJid(remoteJid) || isBroadcastJid(remoteJid)) return [];
 
   const message: Record<string, any> = data.message ?? {};
+
+  // O cliente que edita o que escreveu manda um evento criptografado, e a
+  // Evolution o entrega como se fosse uma mensagem nova. Gravá-lo faria uma
+  // bolha "unknown", mais uma não lida e o aviso de ausência do WhatsApp
+  // Business — por uma frase que ninguém disse.
+  if (message.secretEncryptedMessage) return parseSecretEdit(message.secretEncryptedMessage);
+
   const rawType: string = data.messageType ?? Object.keys(message)[0] ?? "unknown";
   const media = mediaNode(message);
 
@@ -236,6 +246,20 @@ function parseInbound(instanceName: string, data: Record<string, any>): EvoEvent
       fromMe: Boolean(key.fromMe),
     },
   ];
+}
+
+/**
+ * `secretEncType` 2 é MESSAGE_EDIT (o valor numérico é o que a v2.3.7 entrega;
+ * o nome por extenso vale se um dia vier assim). O texto novo está cifrado com
+ * o segredo da mensagem original, então só se sabe que ela mudou. Qualquer
+ * outro tipo de evento cifrado não é mensagem e não tem o que fazer aqui.
+ */
+function parseSecretEdit(secret: Record<string, any>): EvoEvent[] {
+  const type = secret.secretEncType;
+  const id = secret.targetMessageKey?.id;
+  if ((type !== 2 && type !== "MESSAGE_EDIT") || !id) return [];
+
+  return [{ kind: "edit", waMessageId: id, body: null }];
 }
 
 function parseStatus(data: Record<string, any>): EvoEvent[] {

@@ -433,9 +433,15 @@ async function handleStatusUpdate(event: EvoStatusUpdate, companyId: string) {
  * gravou o mesmo texto — passa em branco. Mesma cláusula de empresa do status.
  */
 async function handleEdit(event: EvoMessageEdit, companyId: string) {
+  // Edição cifrada: o texto novo não está ao alcance, mas a marca "editada"
+  // avisa quem atende de que o que está na tela já não é o que foi dito. Gravar
+  // só `edited_at` não passa pelo gatilho do texto, que cuida do `original_body`.
+  const mudanca =
+    event.body === null ? { edited_at: new Date().toISOString() } : { body: event.body };
+
   await supabaseAdmin()
     .from("messages")
-    .update({ body: event.body })
+    .update(mudanca)
     .eq("wa_message_id", event.waMessageId)
     .eq("company_id", companyId)
     .is("deleted_at", null);
