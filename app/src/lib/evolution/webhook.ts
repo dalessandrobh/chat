@@ -13,6 +13,7 @@
  */
 
 import { timingSafeEqual } from "node:crypto";
+import { bytesDe, type EdicaoCifrada } from "@/lib/evolution/edicao-cifrada";
 import { isBroadcastJid, isGroupJid, jidToWaId } from "@/lib/evolution/client";
 
 // -----------------------------------------------------------------------------
@@ -84,6 +85,8 @@ export interface EvoMessageEdit {
   kind: "edit";
   waMessageId: string;
   body: string | null;
+  /** Presente na edição cifrada: o que falta para tentar decifrar o texto novo. */
+  cifrada?: EdicaoCifrada & { instanceName: string; contato: string };
 }
 
 /** Alguém apagou uma mensagem para todos. */
@@ -216,7 +219,7 @@ function parseInbound(instanceName: string, data: Record<string, any>): EvoEvent
   // Evolution o entrega como se fosse uma mensagem nova. Gravá-lo faria uma
   // bolha "unknown", mais uma não lida e o aviso de ausência do WhatsApp
   // Business — por uma frase que ninguém disse.
-  if (message.secretEncryptedMessage) return parseSecretEdit(message.secretEncryptedMessage);
+  if (message.secretEncryptedMessage) return parseSecretEdit(message.secretEncryptedMessage, instanceName, jidToWaId(remoteJid));
 
   const rawType: string = data.messageType ?? Object.keys(message)[0] ?? "unknown";
   const media = mediaNode(message);
@@ -254,12 +257,20 @@ function parseInbound(instanceName: string, data: Record<string, any>): EvoEvent
  * o segredo da mensagem original, então só se sabe que ela mudou. Qualquer
  * outro tipo de evento cifrado não é mensagem e não tem o que fazer aqui.
  */
-function parseSecretEdit(secret: Record<string, any>): EvoEvent[] {
+function parseSecretEdit(
+  secret: Record<string, any>,
+  instanceName: string,
+  contato: string
+): EvoEvent[] {
   const type = secret.secretEncType;
   const id = secret.targetMessageKey?.id;
   if ((type !== 2 && type !== "MESSAGE_EDIT") || !id) return [];
 
-  return [{ kind: "edit", waMessageId: id, body: null }];
+  const encPayload = bytesDe(secret.encPayload);
+  const encIv = bytesDe(secret.encIv);
+  const cifrada = encPayload && encIv ? { encPayload, encIv, instanceName, contato } : undefined;
+
+  return [{ kind: "edit", waMessageId: id, body: null, cifrada }];
 }
 
 function parseStatus(data: Record<string, any>): EvoEvent[] {

@@ -17,7 +17,9 @@ import { CONFIRMACAO_SAIDA, pediuParaSair } from "@/lib/opt-out";
 import { enfileirarTurno, enviarTurno, turnoDoBot } from "@/lib/bot-queue";
 import { filaForaDoExpediente } from "@/lib/horario";
 import { entenderMidia } from "@/lib/midia";
-import { credenciaisDoCanal } from "@/lib/canais";
+import { conexaoDoCanal, credenciaisDoCanal, type CredenciaisCanal } from "@/lib/canais";
+import { findContacts } from "@/lib/evolution/client";
+import { bytesDe, decifrarEdicao } from "@/lib/evolution/edicao-cifrada";
 import {
   parseWebhook,
   verifyWebhookToken,
@@ -107,7 +109,7 @@ export async function POST(
           await handleStatusUpdate(event, credenciais.companyId);
           break;
         case "edit":
-          await handleEdit(event, credenciais.companyId);
+          await handleEdit(event, credenciais);
           break;
         case "revoke":
           await handleRevoke(event, credenciais.companyId);
@@ -432,28 +434,79 @@ async function handleStatusUpdate(event: EvoStatusUpdate, companyId: string) {
  * texto de fato muda, então o eco de uma edição feita pelo painel — que já
  * gravou o mesmo texto — passa em branco. Mesma cláusula de empresa do status.
  */
-async function handleEdit(event: EvoMessageEdit, companyId: string) {
-  // Edição cifrada: o texto novo não está ao alcance, mas a marca "editada"
-  // avisa quem atende de que o que está na tela já não é o que foi dito. Gravar
-  // só `edited_at` não passa pelo gatilho do texto, que cuida do `original_body`.
-  const mudanca =
-    event.body === null ? { edited_at: new Date().toISOString() } : { body: event.body };
+async function handleEdit(event: EvoMessageEdit, credenciais: CredenciaisCanal) {
+  // Edição cifrada: tenta o texto novo; sem ele, a marca "editada" avisa quem
+  // atende de que o que está na tela já não é o que foi dito. Gravar só
+  // `edited_at` não passa pelo gatilho do texto, que cuida do `original_body`.
+  const body = event.body ?? (await decifrar(event, credenciais));
+  const mudanca = body === null ? { edited_at: new Date().toISOString() } : { body };
 
-  await supabaseAdmin()
+  const { error } = await supabaseAdmin()
     .from("messages")
     .update(mudanca)
     .eq("wa_message_id", event.waMessageId)
-    .eq("company_id", companyId)
+    .eq("company_id", credenciais.companyId)
     .is("deleted_at", null);
+  if (error) throw error;
+}
+
+/**
+ * O contato edita o que ele mesmo escreveu, então a chave sai do telefone dele
+ * ou do LID. O webhook só traz o telefone; o LID se acha entre os contatos da
+ * instância pela foto de perfil. Qualquer falha cai na marca sem texto.
+ */
+async function decifrar(
+  event: EvoMessageEdit,
+  credenciais: CredenciaisCanal
+): Promise<string | null> {
+  const cifrada = event.cifrada;
+  if (!cifrada) return null;
+
+  try {
+    const { data } = await supabaseAdmin()
+      .from("messages")
+      .select("payload")
+      .eq("wa_message_id", event.waMessageId)
+      .eq("company_id", credenciais.companyId)
+      .eq("direction", "in")
+      .maybeSingle();
+    const segredo = bytesDe(data?.payload?.messageContextInfo?.messageSecret);
+    if (!segredo) return null;
+
+    const tentar = (jid: string) =>
+      decifrarEdicao(cifrada, segredo, event.waMessageId, jid);
+
+    const telefone = `${cifrada.contato}@s.whatsapp.net`;
+    const direto = tentar(telefone);
+    if (direto) return direto;
+
+    const contatos = await findContacts(
+      await conexaoDoCanal(credenciais.channelId),
+      cifrada.instanceName
+    );
+    const foto = contatos.find((c) => c.remoteJid === telefone)?.profilePicUrl;
+    if (!foto) return null;
+
+    for (const c of contatos) {
+      if (!c.remoteJid.endsWith("@lid") || c.remoteJid.includes(":")) continue;
+      if (c.profilePicUrl !== foto) continue;
+      const texto = tentar(c.remoteJid);
+      if (texto) return texto;
+    }
+  } catch (err) {
+    console.error("[evolution] não foi possível decifrar a edição", err);
+  }
+  return null;
 }
 
 async function handleRevoke(event: EvoMessageRevoke, companyId: string) {
-  await supabaseAdmin()
+  const { error } = await supabaseAdmin()
     .from("messages")
     .update({ deleted_at: new Date().toISOString() })
     .eq("wa_message_id", event.waMessageId)
     .eq("company_id", companyId)
     .is("deleted_at", null);
+  if (error) throw error;
 }
 
 // -----------------------------------------------------------------------------

@@ -212,6 +212,23 @@ export function whatsappNumbers(
   );
 }
 
+export interface ContatoEvolution {
+  remoteJid: string;
+  profilePicUrl: string | null;
+}
+
+/** Contatos que a instância conhece — inclui os identificadores LID. */
+export function findContacts(
+  conn: ConexaoEvolution,
+  instance: string
+): Promise<ContatoEvolution[]> {
+  return evoFetch<ContatoEvolution[]>(
+    conn,
+    `/chat/findContacts/${encodeURIComponent(instance)}`,
+    { method: "POST", body: JSON.stringify({}) }
+  );
+}
+
 export type EvolutionMediaType = "image" | "document" | "video" | "audio";
 
 export function sendMedia(conn: ConexaoEvolution,
